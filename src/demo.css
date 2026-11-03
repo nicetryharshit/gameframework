@@ -1,0 +1,10 @@
+:root { font-family: system-ui, sans-serif; color: #edf4f3; background: #111922; }
+body { margin: 0; } main { max-width: 960px; margin: auto; padding: max(1.5rem, env(safe-area-inset-top)) max(1.5rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1.5rem, env(safe-area-inset-left)); }
+p { color: #b8cbd0; } a { color: #86e6bc; }
+.viewport { position: relative; height: min(60vh, 540px); min-height: 300px; overflow: hidden; background: #172334; }
+.canvas, .screens { position: absolute; inset: 0; } canvas { display: block; }
+.screens { pointer-events: none; display: grid; place-items: center; }
+.screens section { pointer-events: auto; text-align: center; background: #172334e8; padding: 2rem 4rem; border-radius: 1rem; }
+.screens section[hidden] { display: none; } button { padding: .7rem 1.5rem; cursor: pointer; }
+.touch-controls { display: flex; gap: .5rem; justify-content: center; padding: 1rem 0; }
+.touch-controls button { min-width: 44px; min-height: 44px; user-select: none; }

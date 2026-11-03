@@ -1,0 +1,11 @@
+import { performance } from 'node:perf_hooks';
+import { Input } from '../src/framework/input';
+const target = Object.assign(new EventTarget(), { navigator: { getGamepads: () => [] } });
+const input = new Input(Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`action${i}`, { keys: [`Key${i}`] }])), target as unknown as Window);
+for (let i = 0; i < 10_000; i++) input.update();
+const frames = 100_000;
+const start = performance.now();
+for (let i = 0; i < frames; i++) input.update();
+const elapsed = performance.now() - start;
+console.log(`20 idle actions, ${frames} updates: ${elapsed.toFixed(1)}ms; ${(elapsed / frames).toFixed(4)}ms/update on ${process.version} ${process.platform}/${process.arch}. This measures input polling only, not rendering or a complete game.`);
+input.dispose();

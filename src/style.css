@@ -1,0 +1,9 @@
+:root { font-family: system-ui, sans-serif; color: #ecf2f5; background: #141b24; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+main { width: min(36rem, calc(100vw - 3rem)); }
+header { margin-bottom: 2rem; }
+header p, section p { color: #b3c3d0; line-height: 1.5; }
+section { background: #202c39; padding: 2rem; border-radius: 1rem; }
+section[hidden] { display: none; }
+button { background: #9de2c1; color: #142a21; border: 0; border-radius: .5rem; padding: .75rem 1rem; font: inherit; font-weight: 700; cursor: pointer; }
+button:focus-visible { outline: 3px solid white; outline-offset: 3px; }
