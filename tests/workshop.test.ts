@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 // @ts-expect-error Plain Node tooling module.
-import { buildPlan } from '../scripts/export-ui/builds.mjs';
+import { buildPlan, checkPlatform } from '../scripts/export-ui/builds.mjs';
 // @ts-expect-error Plain Node tooling module.
 import { startExportUI } from '../scripts/export-ui/server.mjs';
 
@@ -50,4 +50,22 @@ test('the framework folder creates and opens games, other folders cannot, and in
     assert.deepEqual(listed.games.map((game: { folder: string; renderer: string; update: { outdated: boolean } }) => [game.folder, game.renderer, game.update.outdated]), [['sample-game', '3d', true]]);
     assert.deepEqual(listed.framework, { version: '9.9.9', revision: 'abc123' });
   } finally { await app?.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('mobile checks require rustup and the mobile targets, not just rustc', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'workshop-rustup-'));
+  try {
+    await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'g', version: '0.1.0' }));
+    // Simulate a machine with rustc but no rustup on the PATH the dashboard sees.
+    const saved = process.env.PATH;
+    process.env.PATH = root;
+    try {
+      const result = await checkPlatform(root, 'ios', 'darwin');
+      const rustup = result.checks.find((item: { name: string }) => item.name === 'rustup');
+      assert.ok(rustup, 'iOS checks rustup');
+      assert.equal(rustup.ok, false);
+      assert.match(rustup.detail, /rustup was not found.*rustup\.rs/);
+      assert.equal(result.checks.some((item: { name: string }) => item.name === 'Rust mobile targets'), false, 'targets are only checked once rustup exists');
+    } finally { process.env.PATH = saved; }
+  } finally { await rm(root, { recursive: true, force: true }); }
 });

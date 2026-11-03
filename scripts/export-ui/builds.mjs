@@ -99,6 +99,33 @@ async function version(command, args) {
     child.on('error', () => done(undefined)); child.on('close', code => done(code === 0 ? output.trim().split('\n')[0] : undefined));
   });
 }
+/** Full stdout of a command, or undefined if it cannot run. */
+async function output(command, args) {
+  return new Promise(resolve => {
+    let text = ''; let settled = false;
+    const done = value => { if (!settled) { settled = true; clearTimeout(timer); resolve(value); } };
+    const child = spawn(command, args, { shell: false, windowsHide: true });
+    const timer = setTimeout(() => { child.kill(); done(undefined); }, 10000);
+    child.stdout.on('data', data => { text += data; }); child.stderr.on('data', () => {});
+    child.on('error', () => done(undefined)); child.on('close', code => done(code === 0 ? text : undefined));
+  });
+}
+const MOBILE_TARGETS = {
+  ios: ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios'],
+  android: ['aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android']
+};
+/** Tauri's mobile setup runs `rustup target add`, so rustup and the mobile targets must both be present. */
+async function rustupChecks(platform, add) {
+  const rustup = await version('rustup', ['--version']);
+  const note = 'Start Game Workshop from a terminal, or add ~/.cargo/bin to your PATH, if rustup is installed elsewhere.';
+  add('rustup', !!rustup, rustup || `rustup was not found. Install it from rustup.rs. ${note}`);
+  if (!rustup) return;
+  const installed = (await output('rustup', ['target', 'list', '--installed'])) ?? '';
+  const wanted = MOBILE_TARGETS[platform] ?? [];
+  const missing = wanted.filter(target => !installed.split('\n').includes(target));
+  add('Rust mobile targets', missing.length === 0, missing.length ? `Run: rustup target add ${missing.join(' ')}` : `${wanted.length} installed`);
+}
+
 async function steamCheck(root) {
   const sdk = await exists(path.join(root, 'vendor/steamworks/sdk/public/steam'));
   return { checks: [{ name: 'Steamworks SDK', ok: sdk, detail: sdk ? 'Found in vendor/steamworks/sdk' : 'Download the SDK from the Steamworks site and place it in vendor/steamworks/sdk. Steps: docs/integrations/steam.md', blocking: true }], ready: sdk, note: 'Uploads to Steam are not automated yet.' };
@@ -117,6 +144,7 @@ export async function checkPlatform(root, platform, host = process.platform, act
   if (platform !== 'web') {
     const rust = await version('rustc', ['--version']); add('Rust toolchain', !!rust, rust || 'Install Rust: run "curl https://sh.rustup.rs -sSf | sh" (or see rustup.rs), then reopen the terminal');
     add('Tauri configuration', await exists(path.join(root, 'src-tauri/tauri.conf.json')), 'src-tauri/tauri.conf.json');
+    if (MOBILE_TARGETS[platform]) await rustupChecks(platform, add);
   }
   if (platform === 'windows' && host === 'win32') {
     const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio/Installer/vswhere.exe');

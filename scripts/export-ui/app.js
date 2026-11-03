@@ -448,7 +448,13 @@ function renderPlatform(id) {
       if (index === 0 && option.action === 'dev') node.prepend(icon('play'));
       actions.append(node);
     });
-    if (!isTools) actions.append(button('Re-check', () => loadCheck(id, true), 'link'));
+    if (!isTools) {
+      const busy = checking.has(id);
+      const recheck = button(busy ? 'Checking…' : 'Re-check', () => loadCheck(id, true), 'link');
+      recheck.disabled = busy;
+      recheck.setAttribute('aria-busy', String(busy));
+      actions.append(recheck);
+    }
   }
   view.append(actions);
   if (release) view.append(el('p', 'hint', 'Android release builds need signing, which isn’t set up yet. Use a debug build for now.'));
@@ -476,7 +482,7 @@ function renderJobBar() {
 function draw(force = false) {
   if (!state) return;
   const signature = JSON.stringify([
-    state.project.kind, state.project.name, route, mode, created, lastUpdate, games?.games.map(game => [game.folder, game.update?.revision, game.update?.outdated]),
+    state.project.kind, state.project.name, route, mode, created, lastUpdate, [...checking], [...checkLog.keys()].map(key => [key, checkLog.get(key).length]), games?.games.map(game => [game.folder, game.update?.revision, game.update?.outdated]),
     Object.keys(checks).sort().map(id => [id, checks[id].ready, checks[id].checks.map(item => item.ok)]),
     state.jobs.map(job => [job.id, job.status, !!job.output, job.log.length, job.devUrl ?? null])
   ]);
@@ -508,14 +514,23 @@ function summarise(id, before, after) {
   return lines.join('\n');
 }
 
+/** Platforms with a check in flight. A second press while one is running is ignored. */
+const checking = new Set();
+
 async function loadCheck(id, record = false) {
+  if (checking.has(id)) return;
   const before = checks[id];
+  checking.add(id);
+  if (record) {
+    checkLog.set(id, `${checkLog.get(id) ?? ''}[${CHECK_TIME()}] Checking ${id}…\n`);
+    draw(true);
+  }
   try {
     checks[id] = await api('check', { platform: id });
-    if (record) checkLog.set(id, `${checkLog.get(id) ?? ''}${summarise(id, before, checks[id])}\n`);
+    if (record) checkLog.set(id, checkLog.get(id).replace(/\[[^\]]*\] Checking [^\n]*\n$/, '') + summarise(id, before, checks[id]) + '\n');
   }
-  catch (error) { say(error.message); }
-  draw(true);
+  catch (error) { say(error.message); if (record) checkLog.delete(id); }
+  finally { checking.delete(id); draw(true); }
 }
 async function loadAllChecks() { await Promise.all([...PLATFORMS, ADDON].map(item => loadCheck(item.id))); }
 
