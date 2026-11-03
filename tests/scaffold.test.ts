@@ -17,6 +17,8 @@ test('both starters contain the chosen renderer and exports, and refuse overwrit
       assert.ok(pkg.dependencies[renderer === '2d' ? 'pixi.js' : 'three']);
       assert.equal(Object.keys(pkg.dependencies).length, 3);
       assert.ok(pkg.scripts['build:desktop']); assert.ok(pkg.scripts['build:web']);
+      assert.equal(pkg.scripts['export:ui'], 'game-export-ui');
+      assert.match(await readFile(path.join(target, 'EXPORT.md'), 'utf8'), /npm run export:ui/);
       assert.ok(pkg.scripts['open:ios']); assert.ok(pkg.scripts['open:android']); assert.ok(pkg.dependencies['@tauri-apps/api']);
       const native = JSON.parse(await readFile(path.join(target, 'src-tauri', 'tauri.conf.json'), 'utf8'));
       assert.equal(native.app.windows[0].fullscreen, true); assert.equal(native.app.windows[0].decorations, false);

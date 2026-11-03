@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="export-token" content="__EXPORT_TOKEN__"><title>Build & Export</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+  <aside><a class="brand" href="/" aria-label="Build and Export home"><span class="mark">↗</span> GAME WORKSHOP</a><p class="side-label">BUILD TARGETS</p><nav id="targets" aria-label="Build platforms"></nav><div class="local-note"><i></i> Local workspace<p>Builds run on this computer.<br>No uploads. No automatic jobs.</p></div></aside>
+  <main>
+    <header><div><p class="eyebrow">PROJECT / <span id="project-name">Loading…</span></p><h1>Build & Export<span class="dot">.</span></h1><p class="subtitle">One game. A few different destinations.</p></div><span class="host" id="host">Local machine</span></header>
+    <div id="notice" role="status" hidden></div>
+    <div class="workspace">
+      <section class="panel profile"><div class="panel-heading"><div><p class="eyebrow">BUILD PROFILE</p><h2 id="target-title">Web</h2></div><span class="pill" id="profile-status">Development</span></div>
+        <div class="segmented" aria-label="Build type"><button data-mode="development" class="selected">Development</button><button data-mode="release">Release</button></div>
+        <p class="target-description" id="target-description"></p>
+        <form id="profile-form"><label>Application name<input name="name" required maxlength="80"></label><div class="field-row"><label>Version<input name="version" required placeholder="1.0.0"></label><label>Bundle identifier<input name="identifier" required placeholder="com.studio.game"></label></div>
+        <div class="profile-footer"><span id="saved-state">Profile defaults</span><button type="submit" class="text-button" id="save-profile">Save profile ↗</button></div></form>
+        <div class="destination"><span class="folder">▱</span><div><p>OUTPUT LOCATION</p><code id="output-location">Builds/web/development/</code><small>Each build gets its own folder and report.</small></div></div>
+        <div class="build-actions"><button class="primary" id="build">Build <span>↗</span></button><button class="secondary" id="run">Build & Run</button></div>
+        <div id="web-dev-actions"><button class="secondary dev-button" id="dev">Run Dev Server <span>↗</span></button><p class="dev-hint">Test immediately with live updates. No export build.</p></div>
+        <div class="native-actions" id="native-actions" hidden><button class="text-button" id="initialize">Initialize native project</button><button class="text-button" id="open-native">Open native project ↗</button></div>
+      </section>
+      <section class="panel readiness"><div class="panel-heading"><div><p class="eyebrow">BEFORE YOU BUILD</p><h2>Workspace check</h2></div><button class="icon-button" id="check" aria-label="Refresh prerequisite checks">↻</button></div><div id="checks"><p class="muted">Choose a target and check its prerequisites.</p></div><p class="check-note" id="check-note">Native builds require the matching platform SDKs.</p><div class="help-card"><span>GOOD TO KNOW</span><p id="target-help">Web builds are ready to host. Use Build & Run to open a local preview.</p></div></section>
+    </div>
+    <section class="panel console"><div class="console-heading"><div><span class="terminal-symbol">⌘</span><h2>Build console</h2><span id="job-status" class="pill">Idle</span></div><div><button class="text-button" id="copy-log">Copy log</button><button class="stop" id="stop" hidden>Stop session ■</button></div></div><pre id="log" tabindex="0" aria-label="Build output">Ready when you are.
+Choose a platform, check the workspace, and start a build.</pre><div id="dev-session" hidden><span id="dev-status">Starting dev server…</span> <a id="dev-link" target="_blank" rel="noopener" hidden>Open live game ↗</a></div><div id="artifacts" hidden></div></section>
+    <footer><span id="project-path"></span><span>Made for small games with big plans.</span></footer>
+  </main><script type="module" src="/app.js"></script>
+</body></html>

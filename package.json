@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "bin": {
-    "create-web-game": "./scripts/create-game.mjs"
+    "create-web-game": "./scripts/create-game.mjs",
+    "game-export-ui": "./scripts/export-ui/server.mjs"
   },
   "type": "module",
   "exports": {
@@ -24,8 +25,11 @@
     "src-tauri/build.rs",
     "src-tauri/tauri.conf.json",
     "scripts/create-game.mjs",
+    "scripts/export-ui",
     "docs/UPGRADING.md",
     "docs/PLATFORM-BUILDS.md",
+    "docs/EXPORT-DASHBOARD.md",
+    "docs/FRAMEWORK.md",
     "templates/github/framework-checks.yml.example",
     "src/demo.ts",
     "src/demo-settings.ts",
@@ -52,6 +56,7 @@
   "scripts": {
     "dev": "vite",
     "create:game": "node scripts/create-game.mjs",
+    "export:ui": "node scripts/export-ui/server.mjs",
     "benchmark": "tsx scripts/benchmark.ts",
     "build": "tsc --noEmit && vite build",
     "build:web": "npm run build",

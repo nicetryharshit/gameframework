@@ -1,0 +1,86 @@
+{
+  "web-development": {
+    "platform": "web",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "web-release": {
+    "platform": "web",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "windows-development": {
+    "platform": "windows",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "windows-release": {
+    "platform": "windows",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "macos-development": {
+    "platform": "macos",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "macos-release": {
+    "platform": "macos",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "linux-development": {
+    "platform": "linux",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "linux-release": {
+    "platform": "linux",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "android-development": {
+    "platform": "android",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "android-release": {
+    "platform": "android",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "ios-development": {
+    "platform": "ios",
+    "mode": "development",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  },
+  "ios-release": {
+    "platform": "ios",
+    "mode": "release",
+    "name": "Game Starter",
+    "version": "0.1.0",
+    "identifier": "com.example.webgamestarter"
+  }
+}
