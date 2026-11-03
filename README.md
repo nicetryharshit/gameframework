@@ -13,6 +13,8 @@ You need one thing installed first: **[Node.js 22 or newer](https://nodejs.org/)
 
    Your browser opens Game Workshop. Keep the launcher's window open while you use it.
 
+   To reopen it later from a terminal, run `npm run workshop` in the framework folder or in a game folder.
+
 2. **Install and test the framework (optional but recommended).** In the **Install and test** card, click **Install dependencies**, then **Run tests**. All tests should pass.
 
 3. **Create a game.** In the **New game** form, enter a name such as `testgame` and choose 2D or 3D, then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
