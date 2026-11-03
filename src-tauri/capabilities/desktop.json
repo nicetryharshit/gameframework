@@ -1,0 +1,13 @@
+{
+  "identifier": "desktop-window-controls",
+  "description": "Game display settings and quit on desktop only",
+  "platforms": ["windows", "macOS", "linux"],
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-decorations",
+    "core:window:allow-set-size",
+    "core:window:allow-center",
+    "core:window:allow-close"
+  ]
+}

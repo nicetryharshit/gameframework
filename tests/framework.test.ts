@@ -21,6 +21,12 @@ test('state transitions run lifecycle and queue transitions from enter', () => {
   assert.deepEqual(calls, ['enter a', 'exit a', 'enter b', 'update 0.5', 'exit b']);
   assert.throws(() => new StateManager({}).change('missing'), /Unknown state/);
 });
+test('stale unsubscribe after clear cannot remove a newer subscription', () => {
+  const bus = new EventBus<{ hit: number }>();
+  const stale = bus.on('hit', () => {}); bus.clear();
+  let received = 0; bus.on('hit', value => { received += value; });
+  stale(); stale(); bus.emit('hit', 3); assert.equal(received, 3);
+});
 test('save store handles absent and malformed data', () => {
   const data = new Map<string, string>();
   const storage = { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value); }, removeItem: (key: string) => { data.delete(key); } } as Storage;

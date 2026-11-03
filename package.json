@@ -2,19 +2,33 @@
   "name": "web-game-framework",
   "version": "0.1.0",
   "private": true,
-  "bin": { "create-web-game": "./scripts/create-game.mjs" },
+  "bin": {
+    "create-web-game": "./scripts/create-game.mjs"
+  },
   "type": "module",
   "exports": {
     ".": "./src/framework/index.ts",
     "./pixi": "./src/renderers/pixi.ts",
-    "./three": "./src/renderers/three.ts"
+    "./three": "./src/renderers/three.ts",
+    "./desktop": "./src/platform/desktop.ts"
   },
   "files": [
     "src/framework",
     "src/renderers",
-    "src-tauri",
+    "src/platform",
+    "src-tauri/src",
+    "src-tauri/icons",
+    "src-tauri/capabilities",
+    "src-tauri/Cargo.toml",
+    "src-tauri/Cargo.lock",
+    "src-tauri/build.rs",
+    "src-tauri/tauri.conf.json",
     "scripts/create-game.mjs",
+    "docs/UPGRADING.md",
+    "docs/PLATFORM-BUILDS.md",
+    "templates/github/framework-checks.yml.example",
     "src/demo.ts",
+    "src/demo-settings.ts",
     "src/flappy.ts",
     "src/demo.css",
     "src/demo-2d.ts",
@@ -22,10 +36,12 @@
     "README.md"
   ],
   "peerDependencies": {
+    "@tauri-apps/api": "^2.0.0",
     "pixi.js": "^8.22.0",
     "three": "^0.187.0"
   },
   "peerDependenciesMeta": {
+    "@tauri-apps/api": { "optional": true },
     "pixi.js": {
       "optional": true
     },
@@ -44,16 +60,20 @@
     "build:desktop": "tauri build --no-sign",
     "init:android": "tauri android init",
     "dev:android": "tauri android dev",
+    "open:android": "tauri android dev --open",
     "build:android": "tauri android build --debug --apk",
     "init:ios": "tauri ios init",
     "dev:ios": "tauri ios dev",
+    "open:ios": "tauri ios dev --open",
     "build:ios": "tauri ios build",
     "test": "tsx --test tests/*.test.ts"
   },
   "devDependencies": {
+    "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^22.0.0",
     "@types/three": "^0.187.0",
+    "happy-dom": "^21.0.4",
     "pixi.js": "^8.22.0",
     "three": "^0.187.0",
     "tsx": "^4.19.0",

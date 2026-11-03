@@ -1,0 +1,46 @@
+# Desktop and mobile projects
+
+## Desktop defaults and settings
+
+New desktop games start fullscreen with no title bar. The sample's Settings screen (from main menu or pause menu) saves display mode, logical window size, frame limit, render quality, master/music/effects volume and mute. Saved windowed preferences override the first-run fullscreen default. F11 toggles fullscreen; Quit game closes the native window.
+
+Fullscreen fills the current display. Windowed uses an ordinary decorated window. Borderless window removes decorations at the selected window size; it is distinct from fullscreen. Window size presets are logical window dimensions, not monitor-resolution switching. Frame limits are caps on the browser animation loop and remain limited by the display refresh rate; they do not change hardware VSync. Render quality changes pixel density (capped at 2x), not game coordinates.
+
+The sample includes generated sound effects; it has no music track. The music bus is available for your game's music. Display and quit controls are hidden in web and mobile builds. Web/mobile retain audio, frame limit and render quality settings.
+
+`src/platform/desktop.ts` is an optional package entry, `web-game-framework/desktop`, using `@tauri-apps/api`. Native window permissions are scoped to desktop in `src-tauri/capabilities/desktop.json`. Each game owns its copied settings UI, native configuration and the `platform_kind` Rust command.
+
+For an existing game, copy or merge the new settings sample and native configuration into its repository, install `@tauri-apps/api`, and rebuild. Updating the framework dependency alone cannot change the game's copied fullscreen configuration, native permissions or menus.
+
+## iOS: editable Xcode project
+
+On your Mac, install the Tauri iOS prerequisites, choose your app identifier, and run:
+
+```sh
+npm run init:ios
+npm run open:ios
+```
+
+Initialization generates the native Xcode project under `src-tauri/gen/apple/`. Opening uses Tauri's `ios dev --open` flow, preserving the build integration with Rust and the web frontend. You can edit native settings, capabilities, permissions and native code in Xcode. Keep the rest of the game repository: this is a native project integrated with its JavaScript/Rust sources, not a standalone export that can be moved away from them.
+
+Use `npm run dev:ios` for a simulator or configured device. For physical-device development, Tauri may require `--host`; Vite honors `TAURI_DEV_HOST`. `npm run build:ios` runs a release build/archive/export flow. An IPA is the eventual device/distribution artifact after signing/export configuration; unsigned simulator development is separate. No Apple signing setup is configured here.
+
+## Android: editable Android Studio project
+
+After installing Java, Android SDK/NDK and Rust Android targets:
+
+```sh
+npm run init:android
+npm run open:android
+npm run build:android
+```
+
+Initialization creates the Gradle/Android Studio project under `src-tauri/gen/android/`. The current build command produces a debug APK for testing under `src-tauri/gen/android/app/build/outputs/apk/`. It uses Android's debug signing, not a release keystore. You can edit the manifest, native code and Gradle configuration in Android Studio. An AAB for Google Play can later be produced with `npm run tauri -- android build --aab` after configuring release signing.
+
+## Preserve native changes
+
+Initialize each native project once. Keep customized native source/configuration in the game's Git repository, review generated changes, and avoid deleting/reinitializing the project as a routine build step. Ignore build directories, caches, machine-local settings and signing files. The starter now ignores those outputs rather than the entire `gen/` tree. Existing games must update their own ignore rules before committing native changes. Follow the generated projects' own ignore rules too.
+
+The workflow has the same broad shape as Unity's iOS export: obtain an Xcode project, edit native configuration, then build/archive with Apple tools. Exact outputs and export behavior vary by engine; this repository follows Tauri's CLI and native-project workflow.
+
+References: [Tauri mobile development](https://v2.tauri.app/develop/), [iOS export](https://v2.tauri.app/distribute/app-store/), [Android artifacts](https://v2.tauri.app/distribute/google-play/), [platform prerequisites](https://v2.tauri.app/start/prerequisites/).

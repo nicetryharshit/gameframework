@@ -1,4 +1,4 @@
-/** Small HTML audio helper. Browsers require a user gesture before playback. */
+/** @deprecated Use AudioMixer for new games. Retained for existing game compatibility. */
 export class AudioPlayer {
   private sounds = new Map<string, HTMLAudioElement>();
   private volume = 1;

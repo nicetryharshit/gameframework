@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 // @ts-expect-error Generator is a plain Node module.
@@ -15,11 +15,17 @@ test('both starters contain the chosen renderer and exports, and refuse overwrit
       const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
       assert.equal(pkg.dependencies['web-game-framework'], 'git+https://example.com/framework.git#v1');
       assert.ok(pkg.dependencies[renderer === '2d' ? 'pixi.js' : 'three']);
-      assert.equal(Object.keys(pkg.dependencies).length, 2);
+      assert.equal(Object.keys(pkg.dependencies).length, 3);
       assert.ok(pkg.scripts['build:desktop']); assert.ok(pkg.scripts['build:web']);
+      assert.ok(pkg.scripts['open:ios']); assert.ok(pkg.scripts['open:android']); assert.ok(pkg.dependencies['@tauri-apps/api']);
+      const native = JSON.parse(await readFile(path.join(target, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+      assert.equal(native.app.windows[0].fullscreen, true); assert.equal(native.app.windows[0].decorations, false);
+      const ignore = await readFile(path.join(target, '.gitignore'), 'utf8');
+      assert.equal(ignore.split('\n').includes('src-tauri/gen/'), false);
       assert.match(await readFile(path.join(target, 'src', `demo-${renderer}.ts`), 'utf8'), /web-game-framework\/(pixi|three)/);
       assert.match(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), /class FlappyGame/);
       assert.match(await readFile(path.join(target, 'src', 'demo.ts'), 'utf8'), /states.register\('over'/);
+      await assert.rejects(access(path.join(target, '.github', 'workflows')), { code: 'ENOENT' });
       await assert.rejects(createGame(target, renderer), /already exists/);
     }
   } finally { await rm(temp, { recursive: true, force: true }); }

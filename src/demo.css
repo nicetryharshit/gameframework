@@ -17,3 +17,8 @@ button:focus-visible { outline: 3px solid #d7963e; outline-offset: 3px; } button
 .hud button { pointer-events: auto; margin: 0; padding: 8px 16px; }
 [hidden], .screens section[hidden] { display: none !important; }
 footer { text-align: center; padding: 12px 0 0; } .save-status { display: block; margin-top: 6px; color: #7a9083; font-size: 10px; }
+.options-panel { max-height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.options-panel label { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 10px 0; font-size: 12px; text-align: left; }
+.options-panel select { max-width: 55%; padding: 6px; border: 1px solid #b0c7b9; border-radius: 6px; background: #fffdf4; color: #26473f; }
+.options-panel input[type="range"] { width: 48%; accent-color: #315c4e; }
+.options-panel .options-status { font-size: 11px; min-height: 1.4em; }

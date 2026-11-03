@@ -2,6 +2,7 @@ import { AmbientLight, BoxGeometry, DirectionalLight, Mesh, MeshStandardMaterial
 import { createThreeRenderer } from './renderers/three';
 import { startDemo } from './demo';
 import { flight } from './flappy';
+import './demo.css';
 
 void startDemo('THREE / 3D', async container => {
   const camera = new PerspectiveCamera(2 * Math.atan(360 / 900) * 180 / Math.PI, 2 / 3, 1, 2000);
@@ -18,6 +19,7 @@ void startDemo('THREE / 3D', async container => {
   const floor = new Mesh(box, ground); floor.scale.set(480, 60, 35); floor.position.set(240, 30, 0); scene.add(floor);
   const view = createThreeRenderer(container, camera); view.renderer.setClearColor('#dceee9');
   return {
+    setRenderScale(scale) { view.renderer.setPixelRatio(Math.min(2, (window.devicePixelRatio || 1) * scale)); },
     render(game) {
       bird.position.set(flight.birdX, 720 - game.y, 0);
       game.pipes.forEach((pipe, i) => {

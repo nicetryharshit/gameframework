@@ -2,6 +2,7 @@ import { Container, Graphics } from 'pixi.js';
 import { createPixiRenderer } from './renderers/pixi';
 import { startDemo } from './demo';
 import { flight } from './flappy';
+import './demo.css';
 
 void startDemo('PIXI / 2D', async container => {
   const app = await createPixiRenderer(container);
@@ -20,6 +21,7 @@ void startDemo('PIXI / 2D', async container => {
   world.addChild(bird);
   world.addChild(new Graphics().rect(0, flight.floor, 480, 60).fill('#c3d5b3').rect(0, flight.floor, 480, 8).fill('#91b592'));
   return {
+    setRenderScale(scale) { app.renderer.resolution = Math.min(2, (window.devicePixelRatio || 1) * scale); app.resize(); },
     render(game) {
       world.scale.set(app.screen.width / flight.width, app.screen.height / flight.height);
       bird.position.set(flight.birdX, game.y); bird.rotation = Math.max(-0.4, Math.min(0.8, game.velocity / 650));

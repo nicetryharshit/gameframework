@@ -7,7 +7,7 @@ export class EventBus<Events extends object> {
     if (!group) this.listeners.set(type, group = new Set());
     const handler = listener as (value: never) => void;
     group.add(handler);
-    return () => { group.delete(handler); if (!group.size) this.listeners.delete(type); };
+    return () => { group.delete(handler); if (!group.size && this.listeners.get(type) === group) this.listeners.delete(type); };
   }
 
   once<K extends keyof Events>(type: K, listener: (value: Events[K]) => void): () => void {

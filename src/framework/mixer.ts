@@ -22,6 +22,10 @@ export class AudioMixer {
     this.buffers.set(name, buffer);
   }
   unlock(): Promise<void> { return this.context.resume(); }
+  setBuffer(name: string, buffer: AudioBuffer): void {
+    if (this.disposed) throw new Error('Audio mixer disposed');
+    this.buffers.set(name, buffer);
+  }
   suspend(): Promise<void> { return this.context.suspend(); }
   setVolume(bus: AudioBus | 'master', value: number): void {
     if (!Number.isFinite(value)) throw new Error('Invalid volume');

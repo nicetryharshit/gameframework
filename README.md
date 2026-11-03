@@ -4,6 +4,8 @@ A small TypeScript foundation for browser games, with a renderer-independent cor
 
 ## Use it in a new game
 
+Existing games can update their framework dependency without regeneration. See [the upgrade guide](docs/UPGRADING.md) for local/Git dependency updates, copied-file changes, rollback, audio compatibility and optional GitHub checks.
+
 The quickest local setup is now:
 
 ```sh
@@ -15,9 +17,9 @@ npm install
 npm run dev
 ```
 
-The generator refuses to overwrite an existing directory. It creates Pocket Flight, a tiny Flappy-style game with main menu, scoring HUD, saved best, pause, game over and restart. Tap the sky, press Space/Up, or controller A to flap; Escape/Start pauses. It includes the shared framework dependency and Tauri export scripts. Both 2D and 3D starters play the same game with different renderers. By default it uses a local file dependency on this checkout. For portable builds, pass a pinned Git package spec as the third argument: `npm run create:game -- ../my-game 3d "git+https://github.com/YOUR_NAME/webgameframework.git#COMMIT"`. It creates files only; installation and SDK setup remain explicit. Configure your game's placeholder app identifier and icons before mobile initialization. You can also run `create-web-game <directory> <2d|3d>` from an installed package.
+The generator refuses to overwrite an existing directory. It creates Pocket Flight, a tiny Flappy-style game with main menu, scoring HUD, saved best, pause, game over and restart. Tap the sky, press Space/Enter, or controller A to flap/select; Escape/Start pauses or resumes. Navigate menus with arrows, D-pad or the vertical stick. It includes the shared framework dependency and Tauri export scripts. Both 2D and 3D starters play the same game with different renderers. By default it uses a local file dependency on this checkout. For portable builds, pass a pinned Git package spec as the third argument: `npm run create:game -- ../my-game 3d "git+https://github.com/YOUR_NAME/webgameframework.git#COMMIT"`. It creates files only; installation and SDK setup remain explicit. Configure your game's placeholder app identifier and icons before mobile initialization. You can also run `create-web-game <directory> <2d|3d>` from an installed package.
 
-To remove the example, replace `src/flappy.ts` (rules), `src/demo.ts` (menus/flow), `src/demo-2d.ts` or `src/demo-3d.ts` (rendering), and `src/demo.css`, then point `index.html` at your own entry. The framework and export configuration are independent of these files. The sample uses simple shape art and requires no downloaded assets. Its portrait canvas keeps the same logical play area on every screen. Best scores are namespaced to `pocket-flight`; choose a game-specific namespace when adapting it.
+To remove the example, replace `src/flappy.ts` (rules), `src/demo.ts` (menus/flow), `src/demo-settings.ts` (settings UI), `src/demo-2d.ts` or `src/demo-3d.ts` (rendering), and `src/demo.css`, then point `index.html` at your own entry. The framework and export configuration are independent of these files. The sample uses simple shape art and requires no downloaded assets. Its portrait canvas keeps the same logical play area on every screen. Best scores and settings are namespaced to `pocket-flight`; choose a game-specific namespace when adapting it.
 
 Keep this repository as one shared framework rather than maintaining separate branches. In a new **Vite + TypeScript** game, install this repository as a Git dependency, replacing the URL and tag with the actual repository and released commit/tag:
 
@@ -52,6 +54,8 @@ Open the local URL printed by Vite and select the 2D or 3D example. `npm run bui
 
 ## Export builds
 
+Desktop defaults to fullscreen without a title bar. Settings (main/pause menu) provide saved display mode, window size, frame cap, render quality and audio levels. F11 toggles fullscreen, and desktop menus include Quit game. See [platform builds](docs/PLATFORM-BUILDS.md) for editable Xcode/Android Studio projects, artifacts, native project preservation and desktop settings details.
+
 The example Tauri wrapper packages the current `index.html`, including its example links. Replace the frontend with your game before releasing. Run `npm install` first.
 
 | Command | Result and requirements |
@@ -63,10 +67,12 @@ The example Tauri wrapper packages the current `index.html`, including its examp
 | `npm run build:android` | Debug APK for local testing, under `src-tauri/gen/android/app/build/outputs/apk/`. Android's debug key is used; no release signing is configured. |
 | `npm run dev:android` | Run on an Android device or emulator. |
 | `npm run init:ios` | Generate an Xcode project on a Mac with the iOS prerequisites. |
+| `npm run open:ios` | Open the generated native project in Xcode through Tauri. |
+| `npm run open:android` | Open the generated Gradle project in Android Studio through Tauri. |
 | `npm run dev:ios` | Run using the iOS simulator or a configured device. Simulator use does not require distribution signing. |
 | `npm run build:ios` | Invoke Tauri's iOS release build on a Mac. An installable device or distribution build requires Apple signing; none is configured here. |
 
-Install Rust and the platform SDKs described in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Windows needs MSVC C++ build tools and WebView2; Android needs Java, Android Studio/SDK/NDK and Rust Android targets; iOS needs macOS, Xcode, CocoaPods and Rust iOS targets. `npx tauri info` checks the local environment. The generated mobile projects in `src-tauri/gen/` are ignored and can be regenerated; if you customize them, manage those changes in your game repository rather than losing them on regeneration.
+Install Rust and the platform SDKs described in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Windows needs MSVC C++ build tools and WebView2; Android needs Java, Android Studio/SDK/NDK and Rust Android targets; iOS needs macOS, Xcode, CocoaPods and Rust iOS targets. `npx tauri info` checks the local environment. Initialize mobile projects once, keep customized native sources/configuration in Git, and ignore generated builds, caches and machine-specific settings. Avoid reinitializing projects over native customizations.
 
 Before shipping, change `productName`, `identifier`, window title, version and icons in `src-tauri/tauri.conf.json`. The sample identifier and Tauri icons are placeholders. Store signing, notarization, Steamworks, store uploads, and native-build CI are not configured. An unsigned macOS app can be blocked by Gatekeeper; iOS devices and store distribution need signing. Pocket Flight supports keyboard, gamepad and touch, but mobile exports still need real-device testing.
 
@@ -76,7 +82,7 @@ Installing the framework dependency does not automatically configure an app wrap
 
 ## Where to start
 
-Replace `src/main.ts` and `src/style.css` with your game. The example is intentionally small and shows how the pieces fit together:
+Replace the `src/demo*` files and `src/flappy.ts` with your game. The example shows how the pieces fit together:
 
 1. Create shared services such as `EventBus`, `Input`, `SaveStore`, and `UIController`.
 2. Register states with `StateManager`: each can have `enter`, `update`, and `exit` methods. Change states with `states.change('playing')`. Put cleanup for state-owned objects and subscriptions in `exit`.
@@ -118,11 +124,11 @@ The event bus is synchronous; `on` and `once` return unsubscribe functions. Stat
 - `AudioMixer` is an optional Web Audio service: `load(name, url, signal?)`, `unlock()` from a user gesture, `play(name, 'music'|'effects', loop?)`, `setVolume(bus|'master', volume)`, `suspend()`, and `dispose()`. It decodes once and limits simultaneous voices (32 by default); play returns `undefined` if suspended or at capacity, otherwise a stoppable voice. Bus volume changes affect active voices. Use `suspend` with lifecycle pause and `unlock` on resume; handle rejected promises. Buffer-based audio is intended for short assets; large music files may need streaming.
 - `DebugOverlay(root, inspect)` is opt-in. Call `update(dt)` once per frame and `dispose()` on teardown. Append `?debug` to an example URL for FPS and active state. It updates DOM twice per second.
 
-The core has no runtime library dependencies. Renderer imports remain separate. `npm run benchmark` reports an input-polling microbenchmark; it is not a full-game FPS guarantee. Tests cover lifecycle interruption, action edges, save corruption/migration/quota errors, transition cycles, frame stalls and audio voice cleanup. CI runs tests and frontend builds on Windows, macOS and Linux; physical-device smoke testing is still required for mobile releases.
+The core has no runtime library dependencies. Renderer imports remain separate. `npm run benchmark` reports an input-polling microbenchmark; it is not a full-game FPS guarantee. Tests cover lifecycle interruption, quick input taps, save corruption/migration/quota errors, transition cycles, frame stalls, audio voice cleanup and the example's complete menu/gameplay flow. GitHub checks are opt-in: the inactive template is in `templates/github/`. Physical-device smoke testing is still required for mobile releases.
 
 - `Input`: map action names to keyboard codes, gamepad buttons or axes. Call `update()` once per frame, then use `value`, `held`, `pressed`, or `released`. Rebinding UI is game-owned.
 - `SaveStore`: `save(key, value)`, `load(key, fallback)`, and `remove(key)` use namespaced `localStorage`. JSON is not validated or versioned; validate/migrate your own save data. Storage access and quota errors can throw, so handle them in your game. Browser storage may be cleared by the player.
-- `AudioPlayer`: `add(name, url)`, then `await play(name, { loop: true })`. Playback returns the audio element so you can pause or stop it. Set volume before playback with `setVolume(0..1)`; it applies to subsequently played sounds. Start audio from a user gesture and handle rejected playback promises.
+- `AudioPlayer` is deprecated and retained for compatibility only. Use the optional `AudioMixer` described above for new games.
 - `UIController`: DOM-based menus work independently of your renderer. Provide your own accessibility, focus handling, and visual design for each game.
 
 The renderer helpers resize their canvases to the container. Keep the container explicitly sized in CSS. For Three.js, dispose game-owned geometries, materials, and textures as well as the renderer helper; for PixiJS, destroy the application and its owned objects. If the world persists across pause, dispose it when leaving the game, not when entering pause. This starter does not yet include Steam integration, advanced audio mixing, physics, asset management, resolution scaling, or a debug overlay; add them when a project needs them.
