@@ -1,6 +1,6 @@
 {
   "name": "gameframework",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "bin": {
     "create-web-game": "./scripts/create-game.mjs",
@@ -11,6 +11,7 @@
     ".": "./src/framework/index.ts",
     "./pixi": "./src/renderers/pixi.ts",
     "./three": "./src/renderers/three.ts",
+    "./canvas": "./src/renderers/canvas.ts",
     "./desktop": "./src/platform/desktop.ts"
   },
   "files": [

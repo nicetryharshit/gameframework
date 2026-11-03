@@ -8,82 +8,41 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header class="top">
-    <span class="brand">Game Workshop</span>
-    <span class="game"><span id="game-name">Loading…</span> <button type="button" class="link" id="edit-game">Game details</button></span>
-  </header>
-  <main>
-    <p id="notice" class="notice" role="status" hidden></p>
-
-    <section id="workshop" hidden>
-      <h1>Game Workshop</h1>
-      <p class="lead">Make a new game, or open one you already made. Each game opens in its own dashboard.</p>
-      <div class="form-grid">
-        <form id="create-form" class="form-card">
-          <h2>New game</h2>
-          <label>Game name<input name="name" required maxlength="40" placeholder="My game"></label>
-          <label>Style<select name="renderer"><option value="2d">2D</option><option value="3d">3D</option></select></label>
-          <button type="submit" class="primary">Create game</button>
-        </form>
-        <form id="open-form" class="form-card">
-          <h2>Open a game</h2>
-          <label>Game folder<input name="folder" required placeholder="my-game"></label>
-          <p class="hint">A folder next to this framework folder.</p>
-          <button type="submit" class="secondary">Open game</button>
-        </form>
-      </div>
-      <div id="workshop-result" class="result" hidden></div>
-      <h2>Framework tools</h2>
-      <section class="cards" id="tools" aria-label="Framework tools"></section>
-    </section>
-
-    <section id="game-home">
-      <h1>Where should your game run?</h1>
-      <p class="lead">Pick a platform. We’ll check what’s needed and take you as far as we can.</p>
-      <section class="cards" id="cards" aria-label="Platforms"></section>
-      <h2>Add-ons</h2>
-      <section class="cards" id="addons" aria-label="Add-ons"></section>
-    </section>
-  </main>
-
-  <aside class="panel" id="panel" hidden aria-labelledby="panel-title">
-    <div class="panel-body">
-      <div class="panel-head">
-        <div><h2 id="panel-title" tabindex="-1"></h2><p class="lead" id="panel-lead"></p></div>
-        <button type="button" class="close" id="close" aria-label="Close">×</button>
-      </div>
-      <h3 id="needs-heading">What’s needed</h3>
-      <ul class="steps" id="steps"></ul>
-      <button type="button" class="link" id="recheck">Check again</button>
-      <div class="modes" id="modes" role="group" aria-label="Build type" hidden>
-        <button type="button" data-mode="development">Test build</button>
-        <button type="button" data-mode="release">Release build</button>
-      </div>
-      <p class="hint" id="hint" hidden></p>
-      <div class="actions" id="actions"></div>
-      <div class="result" id="result" hidden></div>
-      <details>
-        <summary>Show details</summary>
-        <pre id="log" tabindex="0">Nothing has run yet.</pre>
-        <div class="log-actions">
-          <button type="button" class="link" id="copy">Copy log</button>
-          <button type="button" class="danger" id="stop" hidden>Stop</button>
-        </div>
-      </details>
-    </div>
-  </aside>
+  <div class="app">
+    <aside id="side" aria-label="Navigation"></aside>
+    <main id="main">
+      <p id="notice" class="notice" role="status" hidden></p>
+      <div id="view" class="wrap"></div>
+    </main>
+  </div>
+  <footer class="jobbar" id="jobbar" aria-live="polite"></footer>
 
   <dialog id="game-dialog" aria-labelledby="game-title">
-    <form id="game-form" class="form">
+    <form id="game-form" class="dialog-form">
       <h2 id="game-title">Game details</h2>
       <label>Game name<input name="name" required maxlength="80"></label>
       <label>Version<input name="version" required placeholder="1.0.0"></label>
       <label>Identifier<input name="identifier" required placeholder="com.yourstudio.game"></label>
       <p class="hint">Apple and Android use the identifier to tell apps apart.</p>
-      <p class="hint" id="game-error" hidden></p>
-      <div class="actions">
-        <button type="submit" class="primary">Save</button>
-        <button type="button" class="secondary" id="cancel-game">Cancel</button>
+      <p class="hint error" id="game-error" hidden></p>
+      <div class="row-actions">
+        <button type="submit" class="btn primary">Save</button>
+        <button type="button" class="btn" id="cancel-game">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="update-dialog" aria-labelledby="update-title">
+    <form id="update-form" class="dialog-form">
+      <h2 id="update-title">Update tools</h2>
+      <p class="hint" id="update-sub"></p>
+      <div id="update-list" class="pick-list"></div>
+      <h3 class="subhead">Renderers</h3>
+      <div id="renderer-list" class="pick-list"></div>
+      <p class="hint">Only the framework tools in <span class="mono">tools/gameframework</span> change. Your game code, <span class="mono">src-tauri</span>, profiles and builds are never touched.</p>
+      <p class="hint error" id="update-error" hidden></p>
+      <div class="row-actions">
+        <button type="submit" class="btn primary">Update selected</button>
+        <button type="button" class="btn" id="cancel-update">Cancel</button>
       </div>
     </form>
   </dialog>

@@ -14,7 +14,7 @@ const checkResults: Record<string, { ready: boolean; checks: { name: string; ok:
 const platforms = ['web', 'windows', 'macos', 'linux', 'ios', 'android'];
 const profiles = Object.fromEntries(platforms.flatMap(platform => ['development', 'release'].map(mode => [`${platform}-${mode}`, { platform, mode, name: 'Test game', version: '1.0.0', identifier: 'com.test.game' }])));
 
-test('dashboard renders platform cards, opens details and starts a build from the local API', async () => {
+test('dashboard renders the platform table, opens a full page and starts a build from the local API', async () => {
   const dir = path.join(process.cwd(), 'scripts', 'export-ui');
   const html = (await readFile(path.join(dir, 'index.html'), 'utf8')).replace('__EXPORT_TOKEN__', 'test-token');
   const window = new Window({ url: 'http://127.0.0.1:4179/' });
@@ -38,20 +38,29 @@ test('dashboard renders platform cards, opens details and starts a build from th
     const settle = () => new Promise(resolve => setTimeout(resolve, 30));
     await settle();
     const doc = window.document as unknown as Document;
-    const cards = Array.from(doc.querySelectorAll('#cards .card'));
-    assert.equal(cards.length, 6);
-    const statusOf = (name: string) => cards.find(card => card.querySelector('h3')?.textContent === name)?.querySelector('.status')?.textContent;
+    const rows = Array.from(doc.querySelectorAll('#view tbody tr'));
+    assert.equal(rows.length, 7, 'six platforms plus the Steam add-on');
+    const rowOf = (name: string) => rows.find(row => row.querySelector('b')?.textContent === name)!;
+    const statusOf = (name: string) => rowOf(name).querySelectorAll('td')[1].textContent;
     assert.equal(statusOf('Web'), 'Ready');
-    assert.equal(statusOf('iPhone and iPad'), 'Needs a Mac computer');
-    assert.equal(statusOf('Android'), 'Setup needed');
-    assert.equal(doc.querySelectorAll('#addons .card').length, 1);
+    assert.equal(statusOf('iOS'), 'Needs macOS');
+    assert.equal(statusOf('Android'), 'Needs setup');
+    assert.equal(statusOf('Steam'), 'Not installed');
+    assert.equal(doc.querySelectorAll('#side .nav').length, 8, 'overview, six platforms, steam');
+    assert.equal(doc.querySelector('aside.panel'), null, 'no side panel');
 
-    const webBuild = cards.find(card => card.querySelector('h3')?.textContent === 'Web')!.querySelector('button') as HTMLButtonElement;
-    webBuild.click();
+    (rowOf('Web').querySelector('button') as HTMLButtonElement).click();
     await settle();
     assert.deepEqual(posts.at(-1), { route: '/api/start', body: { profile: profiles['web-development'], action: 'dev' } });
-    assert.equal((doc.querySelector('#panel') as HTMLElement).hidden, false);
-    assert.equal(doc.querySelector('#panel-title')?.textContent, 'Web');
+    assert.equal(doc.querySelector('#view h1')?.textContent, 'Web');
+    assert.ok(doc.querySelector('#view .log'), 'platform page shows output');
+    const clearLink = Array.from(doc.querySelectorAll('#view button')).find(node => node.textContent === 'Clear') as HTMLButtonElement;
+    assert.ok(clearLink, 'output panel has a Clear action');
+    assert.equal(clearLink.disabled, false, 'Clear is available when no job is running');
+
+    (doc.querySelector('.crumb button') as HTMLButtonElement).click();
+    await settle();
+    assert.equal(doc.querySelector('#view h1')?.textContent, 'Test game');
   } finally {
     Object.assign(globals, previous);
   }

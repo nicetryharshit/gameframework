@@ -2,7 +2,7 @@
 import http from 'node:http';
 import { createReadStream } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { access, readFile, realpath, stat, writeFile, mkdir } from 'node:fs/promises';
+import { access, readFile, readdir, realpath, stat, writeFile, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -53,20 +53,60 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     return { folder: slug };
   }
 
-  async function openGame(data) {
-    if (!(await isFramework())) throw new Error('Games can only be opened from the framework folder.');
+  /** Resolves a game folder name to a real game folder next to the framework, or throws. */
+  async function gameFolder(data) {
+    if (!(await isFramework())) throw new Error('Games can only be managed from the framework folder.');
     const folder = String(data.folder ?? '').trim();
     if (!/^[a-z0-9][a-z0-9-]*$/.test(folder)) throw new Error('Enter the name of a game folder next to the framework folder.');
     const gameRoot = await realpath(path.join(path.dirname(root), folder)).catch(() => undefined);
     if (!gameRoot || path.dirname(gameRoot) !== path.dirname(root)) throw new Error('No game folder with that name next to the framework folder.');
     const serverFile = path.join(gameRoot, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs');
     if (!(await exists(serverFile))) throw new Error('That folder is not a Game Workshop game.');
+    return { folder, gameRoot, serverFile };
+  }
+
+  async function openGame(data) {
+    const { folder, gameRoot, serverFile } = await gameFolder(data);
     if (games.has(folder)) return { url: games.get(folder).url };
     const game = await startGameDashboard(gameRoot, serverFile);
     games.set(folder, game);
     game.child.on('close', () => games.delete(folder));
     openExternal(game.url);
     return { url: game.url };
+  }
+
+  /** Copies this framework's tools into a game. Its dashboard is stopped first so it restarts on the new code. */
+  async function updateGame(data) {
+    const { folder, gameRoot } = await gameFolder(data);
+    if (data.components !== undefined && !Array.isArray(data.components)) throw new Error('Choose which parts to update.');
+    const { updateGame: update } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const result = await update(gameRoot, data.components);
+    games.get(folder)?.child.kill(); games.delete(folder);
+    return result;
+  }
+
+  /** Adds one of the framework's renderers to a game: copies it, maps the alias and lists its packages. */
+  async function addRenderer(data) {
+    const { gameRoot } = await gameFolder(data);
+    const { addRenderer: add } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    return add(gameRoot, String(data.renderer ?? ''));
+  }
+
+  /** Lists game folders next to the framework folder so the home page can show them. */
+  async function listGames() {
+    if (!(await isFramework())) throw new Error('Games are listed from the framework folder.');
+    const parent = path.dirname(root); const found = [];
+    const { inspectGame, frameworkVersion } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    for (const entry of await readdir(parent, { withFileTypes: true }).catch(() => [])) {
+      if (!entry.isDirectory() || !/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
+      const folder = path.join(parent, entry.name);
+      if (!(await exists(path.join(folder, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs')))) continue;
+      const pkg = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8').catch(() => '{}'));
+      const update = await inspectGame(folder).catch(() => undefined);
+      found.push({ folder: entry.name, update, renderer: pkg.dependencies?.['three'] ? '3d' : '2d', running: games.has(entry.name) });
+    }
+    const { version, revision } = await frameworkVersion();
+    return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision } };
   }
 
   async function execute(job) {
@@ -117,12 +157,15 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       if (url.pathname.startsWith('/api/')) {
         if (req.headers['x-export-token'] !== token || (req.headers.origin && req.headers.origin !== address.origin)) return json({ error: 'Unauthorized local request' }, 403);
         if (req.method === 'GET' && url.pathname === '/api/state') return json({ project: await projectInfo(root), active: active?.id, jobs: jobs.map(({ child, ...job }) => job) });
+        if (req.method === 'GET' && url.pathname === '/api/games') return json(await listGames());
         if (req.method !== 'POST' || req.headers.origin !== address.origin || !req.headers['content-type']?.startsWith('application/json')) return json({ error: 'Invalid request' }, 403);
         let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 16384) throw new Error('Request too large'); }
         const data = JSON.parse(body || '{}');
         if (url.pathname === '/api/check') return json(await checkPlatform(root, data.platform));
         if (url.pathname === '/api/create') return json(await createGame(data));
         if (url.pathname === '/api/open-game') return json(await openGame(data));
+        if (url.pathname === '/api/update-game') return json(await updateGame(data));
+        if (url.pathname === '/api/add-renderer') return json(await addRenderer(data));
         if (url.pathname === '/api/profile') {
           if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
           saving = true; try { return json(await saveProfile(root, data)); } finally { saving = false; }

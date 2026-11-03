@@ -1,6 +1,6 @@
 # gameframework
 
-A starter for browser games made with **PixiJS (2D)** or **Three.js (3D)**. It includes shared game systems and a **Game Workshop** dashboard that builds the game for web, desktop and mobile, with no terminal needed after setup.
+A starter for browser games made with **PixiJS (2D)**, **Three.js (3D)** or a dependency-free **Canvas 2D** renderer. It includes shared game systems and a **Game Workshop** dashboard that builds the game for web, desktop and mobile, with no terminal needed after setup.
 
 ## Set up
 
@@ -15,23 +15,27 @@ You need one thing installed first: **[Node.js 22 or newer](https://nodejs.org/)
 
    To reopen it later from a terminal, run `npm run workshop` in the framework folder or in a game folder.
 
-2. **Install and test the framework (optional but recommended).** In the **Install and test** card, click **Install dependencies**, then **Run tests**. All tests should pass.
+2. **Install and test the framework (optional but recommended).** Open **Maintenance** in the sidebar, click **Install dependencies**, then **Run tests**. All tests should pass.
 
-3. **Create a game.** In the **New game** form, enter a name such as `testgame` and choose 2D or 3D, then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
+3. **Create a game.** In **Games**, use the **New game** form: enter a name such as `testgame` and choose 2D or 3D, then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
 
 Your game is now a separate project. It contains its own copy of the framework, so you can move or delete this folder afterwards.
 
+## Keep a game up to date
+
+A game keeps its own copy of the framework tools, so it doesn't change when the framework does. In the framework dashboard, **Games** flags a game with older tools as **Update available**. **Update tools** lets you choose which parts to refresh (core, renderers, platform, dashboard, docs) and add renderers such as Three.js or Canvas 2D to an existing game. Your game code is never touched. Details: [Updating games](docs/UPGRADING.md).
+
 ## Work on your game
 
-Each game has its own copy of Game Workshop. Open it with the `Game Workshop` launcher inside the game folder, or with **Open game** from the framework dashboard.
+Each game has its own copy of Game Workshop. Open it with the `Game Workshop` launcher inside the game folder, or with **Open** on the game's row in the framework dashboard's **Games** list.
 
-- **Play it:** on the **Web** card, click **Play in browser**. Changes you save update the running game. If dependencies are missing, the card asks you to install them first.
+- **Play it:** click **Play in browser** (top right of the overview). Changes you save update the running game. If dependencies are missing, the Web row asks you to install them first.
 - **Edit your game:** the code lives in `src/`. The example game (Pocket Flight) can be replaced, file by file. See the game's `README.md`.
 - **Game details:** click **Game details** to set the name, version and identifier. Apple and Android use the identifier to tell apps apart.
 
 ## Build for platforms
 
-Click a platform card. The card shows what's ready and what's missing, and its main button does the next step.
+Click a platform in the sidebar or the overview table. Its page shows what's ready and what's missing, and its main button does the next step.
 
 | Platform | What the dashboard does | What you need on your computer |
 | --- | --- | --- |
@@ -44,11 +48,11 @@ Click a platform card. The card shows what's ready and what's missing, and its m
 
 Each build gets its own folder under `Builds/`, with a download link and a build report. The **Test build** and **Release build** switch chooses the mode. Release builds for Android need signing, which isn't set up yet.
 
-The dashboard doesn't install Xcode, Android Studio, or Rust for you. Each card's checklist says what's missing and how to fix it. Click **Check again** after installing something to update the status.
+The dashboard doesn't install Xcode, Android Studio, or Rust for you. Each platform page's checklist says what's missing and how to fix it. Click **Re-check** after installing something to update the status.
 
 ### Steam (optional)
 
-Steam is an add-on for desktop builds. Click **See steps** on the Steam card and follow the checklist. You need a Steamworks partner account and the Steamworks SDK, which you download yourself and place in `vendor/steamworks/sdk`. Steam uploads aren't automated yet. The full steps are in `docs/integrations/steam.md`.
+Steam is an add-on for desktop builds. Open **Steam** in the sidebar and follow the checklist. You need a Steamworks partner account and the Steamworks SDK, which you download yourself and place in `vendor/steamworks/sdk`. Steam uploads aren't automated yet. The full steps are in `docs/integrations/steam.md`.
 
 ## How the project is organised
 
@@ -56,7 +60,7 @@ Steam is an add-on for desktop builds. Click **See steps** on the Steam card and
 gameframework/            ← this folder: the framework and Game Workshop
   Game Workshop.command   ← double-click launchers (Mac, Windows, Linux)
   src/framework/          ← shared systems: state, events, UI, input, saves, audio
-  src/renderers/          ← PixiJS and Three.js helpers
+  src/renderers/          ← renderers (Pixi, Three, Canvas 2D) and registry.json
   scripts/export-ui/      ← the Game Workshop dashboard
   docs/                   ← guides
   testgame/               ← created by New game (sits next to this folder)
@@ -89,8 +93,10 @@ Everything above can also be done from a terminal, which is useful for scripts o
 | [Game Workshop](docs/EXPORT-DASHBOARD.md) | What each part of the dashboard does |
 | [Desktop and mobile builds](docs/PLATFORM-BUILDS.md) | Platform requirements and native project details |
 | [Framework API](docs/FRAMEWORK.md) | Shared systems and how to use them in code |
+| [Dashboard design](docs/DESIGN.md) | Style, themes and constraints for changing the dashboard |
+| [Renderers](docs/RENDERERS.md) | The included renderers, adding one to a game, and alternatives |
 | [Steam](docs/integrations/steam.md) | Steamworks setup, step by step |
 | [Updating games](docs/UPGRADING.md) | Bringing a newer framework into an existing game |
 | [Roadmap](docs/ROADMAP.md) | What's done, what's next, and what hasn't been tested yet |
 
-To check changes to this framework, run the tests from the Install and test card, or `npm test`.
+To check changes to this framework, run the tests from Maintenance, or `npm test`.

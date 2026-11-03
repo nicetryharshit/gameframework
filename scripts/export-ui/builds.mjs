@@ -115,28 +115,28 @@ export async function checkPlatform(root, platform, host = process.platform, act
     try { tool(root, pkg); add(name, true, 'Installed'); } catch { add(name, false, 'Use Install dependencies to set this up'); }
   }
   if (platform !== 'web') {
-    const rust = await version('rustc', ['--version']); add('Rust toolchain', !!rust, rust || 'Install Rust and the platform prerequisites');
+    const rust = await version('rustc', ['--version']); add('Rust toolchain', !!rust, rust || 'Install Rust: run "curl https://sh.rustup.rs -sSf | sh" (or see rustup.rs), then reopen the terminal');
     add('Tauri configuration', await exists(path.join(root, 'src-tauri/tauri.conf.json')), 'src-tauri/tauri.conf.json');
   }
   if (platform === 'windows' && host === 'win32') {
     const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio/Installer/vswhere.exe');
     const msvc = await version(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath']);
-    add('MSVC build tools', !!msvc, msvc || 'Install Visual Studio C++ build tools');
+    add('MSVC build tools', !!msvc, msvc || 'Install Visual Studio Build Tools with the "Desktop development with C++" workload');
   }
   if (platform === 'linux' && host === 'linux') {
     const webkit = await version('pkg-config', ['--modversion', 'webkit2gtk-4.1']);
-    add('WebKitGTK', !!webkit, webkit || 'Install WebKitGTK 4.1 development packages');
+    add('WebKitGTK', !!webkit, webkit || 'Install the WebKitGTK 4.1 dev package (e.g. sudo apt install libwebkit2gtk-4.1-dev)');
   }
   if (platform === 'android') {
-    const java = await version('java', ['-version']); add('Java', !!java, java || 'Set JAVA_HOME and add Java to PATH');
-    add('Android SDK', !!process.env.ANDROID_HOME && await exists(process.env.ANDROID_HOME), process.env.ANDROID_HOME || 'Set ANDROID_HOME');
-    add('Android NDK', !!process.env.NDK_HOME && await exists(process.env.NDK_HOME), process.env.NDK_HOME || 'Set NDK_HOME');
+    const java = await version('java', ['-version']); add('Java', !!java, java || 'Install a JDK (17 or newer) and set JAVA_HOME to it');
+    add('Android SDK', !!process.env.ANDROID_HOME && await exists(process.env.ANDROID_HOME), process.env.ANDROID_HOME || 'Install Android Studio, then set ANDROID_HOME to its SDK folder (usually ~/Library/Android/sdk)');
+    add('Android NDK', !!process.env.NDK_HOME && await exists(process.env.NDK_HOME), process.env.NDK_HOME || 'In Android Studio: SDK Manager → SDK Tools → NDK (Side by side), then set NDK_HOME to it');
   }
   if (['ios', 'macos'].includes(platform) && host === 'darwin') {
-    const xcode = await version('xcode-select', ['-p']); add('Apple build tools', !!xcode, xcode || 'Install Xcode / command line tools');
-    if (platform === 'ios') { const pods = await version('pod', ['--version']); add('CocoaPods', !!pods, pods || 'Install CocoaPods'); }
+    const xcode = await version('xcode-select', ['-p']); add('Apple build tools', !!xcode, xcode || 'Install Xcode from the App Store, then run "xcode-select --install"');
+    if (platform === 'ios') { const pods = await version('pod', ['--version']); add('CocoaPods', !!pods, pods || 'Install CocoaPods: run "sudo gem install cocoapods" (or "brew install cocoapods"), then Re-check'); }
   }
-  if (['android', 'ios'].includes(platform)) add('Native project', await exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)), 'Initialize once, then keep native customizations in your game repository', false);
+  if (['android', 'ios'].includes(platform)) add('Native project', await exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)), platform === 'ios' ? 'Created once in src-tauri/gen/apple. Edits you make in Xcode live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.' : 'Created once in src-tauri/gen/android. Edits you make in Android Studio live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.', false);
   return { checks, ready: checks.every(check => check.ok || !check.blocking), note: 'Checks detect common prerequisites. Platform SDK components and Rust target availability are verified by the native build tools.' };
 }
 export async function nativeProjectExists(root, platform) { return exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)); }

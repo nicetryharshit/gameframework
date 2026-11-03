@@ -37,5 +37,17 @@ test('the framework folder creates and opens games, other folders cannot, and in
     assert.equal((await post('create', { name: 'Fine game', renderer: 'sideways' })).status, 400);
     assert.equal((await post('open-game', { folder: '../etc' })).status, 400);
     assert.equal((await post('open-game', { folder: 'missing-game' })).status, 400);
+
+    // A real game folder (marked by its bundled dashboard) shows up in the games list; plain folders do not.
+    const game = path.join(root, 'sample-game');
+    await mkdir(path.join(game, 'tools', 'gameframework', 'scripts', 'export-ui'), { recursive: true });
+    await writeFile(path.join(game, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs'), '');
+    await writeFile(path.join(game, 'tools', 'gameframework', 'VERSION.json'), JSON.stringify({ version: '0.0.1' }));
+    await writeFile(path.join(game, 'package.json'), JSON.stringify({ name: 'sample-game', dependencies: { three: '1.0.0' } }));
+    await mkdir(path.join(framework, 'scripts'), { recursive: true });
+    await writeFile(path.join(framework, 'scripts', 'create-game.mjs'), "export const frameworkVersion = async () => ({ version: '9.9.9', revision: 'abc123' });\nexport const inspectGame = async () => ({ version: '0.0.1', revision: 'old000', outdated: true, components: [] });\n");
+    const listed = await (await fetch(`${base}/api/games`, { headers: { 'X-Export-Token': token } })).json();
+    assert.deepEqual(listed.games.map((game: { folder: string; renderer: string; update: { outdated: boolean } }) => [game.folder, game.renderer, game.update.outdated]), [['sample-game', '3d', true]]);
+    assert.deepEqual(listed.framework, { version: '9.9.9', revision: 'abc123' });
   } finally { await app?.close(); await rm(root, { recursive: true, force: true }); }
 });

@@ -2,29 +2,28 @@
 
 Game Workshop is the dashboard for creating games and building them. Open it with the **Game Workshop** launcher in the framework folder or in a game folder. It runs on your computer and nothing is uploaded.
 
+## Look and themes
+
+The sidebar footer has four themes: **Ink** (warm dark), **Paper** (warm light), **Slate** and **Moss**. The choice is remembered in the browser; the first visit follows your system's light or dark setting. The framework dashboard and a game's dashboard use different accent colours and a mode tag so they are easy to tell apart.
+
 ## Framework folder
 
-- **New game** creates a game next to the framework folder. Choose a name and 2D or 3D. The new game's dashboard opens in a new tab.
-- **Open game** opens the dashboard for a game folder next to the framework folder.
-- **Install and test** runs `npm install` or the framework tests. Results appear in the panel, with a log under **Show details**.
+- **Games** lists the games next to the framework folder. **Open** starts that game's dashboard in a new tab. A game with older tools is flagged **Update available**; **Update tools** lets you pick which parts to refresh (see [Updating a game](UPGRADING.md)).
+- **New game** creates a game next to the framework folder. Choose a folder name and 2D or 3D. Its dashboard opens in a new tab.
+- **Maintenance** (sidebar) runs `npm install` or the framework tests, with the output on the same page.
 
 ## Game folder
 
-Each platform has a card:
+The sidebar has an **Overview**, one page per platform, and the Steam add-on. The coloured dot beside each name is its status.
 
-- **Status** shows **Ready**, **Setup needed**, **Not set up yet**, or **Needs a Mac/Windows/Linux computer**.
-- **Main button** does the next step: install dependencies, play in browser, build, set up a native project, or open it in Xcode or Android Studio.
-- **See what's needed** opens a checklist. Each missing item says how to fix it.
-
-In the panel:
-
-- **Test build** and **Release build** choose the build mode. Release builds for Android need signing, which isn't set up yet.
-- **Show details** shows the full log. **Stop** cancels a running job.
-- Finished builds show an **Open output folder** button and download links. Web builds also get a preview link.
+- **Overview** is a table with one row per platform: status, the next step, and one button for it (install dependencies, play, build, set up a native project). Click a row to open that platform's page. **Play in browser** and **Game details** are in the header.
+- **Platform page** shows the readiness checklist (each missing item says how to fix it), the main action, secondary actions as links, and the live output. **Debug / Release** chooses the build mode. Release builds for Android need signing, which isn't set up yet.
+- **Job bar** at the bottom shows the running job on every page, with **Show output** and **Stop**.
+- Finished builds show **Open output folder** and download links. Web builds also get a preview link.
 
 Native projects are created once, under `src-tauri/gen/`. Keep your changes there in Git. Setup never overwrites an existing project.
 
-The **Steam** card checks for the Steamworks SDK in `vendor/steamworks/sdk`. See [Steam](integrations/steam.md).
+The **Steam** page checks for the Steamworks SDK in `vendor/steamworks/sdk`. See [Steam](integrations/steam.md).
 
 ## Terminal alternative
 

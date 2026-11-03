@@ -18,6 +18,8 @@ Developers get a playable build for every target without installing toolchains w
 
 ## Done
 
+- [x] Workshop redesign: separate Framework and Game screens, full-page platform views, job bar.
+- [x] **Update tools**: per-part updates (core, renderers, platform, dashboard, docs) with content-hash revisions, and an "Update available" flag on games with older tools. Framework version bumped to 0.2.0.
 - [x] `npm run doctor`: checks Node, dependencies, type checks, tests and per-target prerequisites. Writes `Builds/support-report.json`. (`scripts/doctor.mjs`)
 - [x] Content security policy set in `src-tauri/tauri.conf.json` (replaces `"csp": null`). **Not yet verified in a running desktop build.**
 - [x] Removed `src/main.ts`, which nothing loaded.
@@ -34,27 +36,25 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 - [x] Game details (name, version, identifier) are edited once, in a dialog, and applied to every platform.
 - [x] Opening an iOS or Android project hands off to the native tool (Xcode, or the folder for Android Studio) instead of starting a long-running dev session.
 - [x] Steam add-on: checks for the Steamworks SDK in `vendor/steamworks/sdk` and shows the manual steps. Upload is not automated yet.
-- [x] `tests/dashboard.test.ts` loads the real page in a headless DOM and checks the cards, the details panel and the build request.
+- [x] `tests/dashboard.test.ts` loads the real page in a headless DOM and checks the platform table, a platform page and the build request.
 
 - [x] Generated games are self-contained. `create-game` copies the framework runtime, build dashboard, doctor and docs into `tools/gameframework/`, and the game imports them through aliases. A generated game never reads the framework checkout after creation. Covered by `tests/scaffold.test.ts`, which type-checks and builds a generated game.
 - [x] `npm run doctor` runs on the current folder, so it works in a generated game too.
 
-- [x] Framework folder: "New game" (name and 2D/3D), "Open game" for a game folder next to the framework, and "Install and test" tools (install dependencies, run tests). Games open in their own dashboard in a new browser tab.
-- [x] Game dashboards: "Play in browser" starts the live dev server from the Web card. "Install dependencies" appears first whenever dependencies are missing.
+- [x] Framework folder: a **Games** list (open a game next to the framework), a **New game** form (name and 2D/3D), and **Maintenance** (install dependencies, run tests). Games open in their own dashboard in a new browser tab.
+- [x] Game dashboards: "Play in browser" starts the live dev server (overview header and Web page). "Install dependencies" appears first whenever dependencies are missing.
 - [x] Double-click launchers: `Game Workshop.command` (Mac), `Game Workshop.bat` (Windows) and `Game Workshop.sh` (Linux), in the framework folder and in every generated game. If Node.js is missing they open the download page.
 - [x] `tests/workshop.test.ts` checks the create and open rules and the install and test actions.
 
 **Not verified yet:**
 - Double-click launchers on Mac and Windows, and the Node.js check they do.
-- The browser flows for New game, Open game and Play in browser. Only the rendering and the API are covered by tests.
+- The browser flows for New game, Open, Update tools, Add renderer and Play in browser. The rendering and the API are covered by tests, and the screens were checked in screenshots with stubbed data, but not clicked through against a real game.
 - Opening Xcode and Android Studio from the dashboard. This needs a Mac (and Android Studio installed).
 - The desktop build and the CSP on a Mac or Windows machine.
-- `docs/EXPORT-DASHBOARD.md` and `docs/UPGRADING.md` still describe the old profile editor and the linked dependency. They need rewriting.
-- A one-command way to update `tools/gameframework/` in an existing game.
+- The bundled fonts: the dashboard uses the system font stack. Geist and Lucide icons were considered but not bundled.
 
 **Next dashboard steps:**
-- Rewrite `docs/EXPORT-DASHBOARD.md` for the new page.
-- Add the Steam hook (P0 item 2) so Steam builds can be enabled from the Steam card.
+- Add the Steam hook (P0 item 2) so Steam builds can be enabled from the Steam page.
 - Make the iOS export collect a self-contained Xcode project into `Builds/` (P0 item 5).
 
 ## P0: blockers for shipping to mobile and Steam
@@ -67,15 +67,16 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 
 ## P1: correctness and coverage
 
-6. **Add renderer tests** for PixiJS and Three.js: mount, resize and dispose.
-7. **Add a native shell smoke test** for the Tauri shell, the `platform_kind` command and the desktop settings path.
-8. **Test on real devices**: touch, controller and fullscreen on an iPhone, an Android phone, and a Steam Deck or similar.
-9. **Reduce the 3D bundle.** The 3D chunk is 523 kB minified. Split Three.js or lazy-load the 3D demo.
-10. **Make the doctor run the build.** Currently it checks prerequisites only. A "verified" status should come from a real build run.
+6. **More renderers.** Done: renderer registry, a dependency-free `canvas` renderer, and one-step **Add renderer** for existing games (see `docs/RENDERERS.md`). Still open: a Phaser adapter (best 2D candidate) and a Babylon.js adapter (game-oriented 3D), each with a bundling check inside the Tauri shell; a Canvas option in **New game**.
+7. **Add renderer tests** for PixiJS and Three.js: mount, resize and dispose.
+8. **Add a native shell smoke test** for the Tauri shell, the `platform_kind` command and the desktop settings path.
+9. **Test on real devices**: touch, controller and fullscreen on an iPhone, an Android phone, and a Steam Deck or similar.
+10. **Reduce the 3D bundle.** The 3D chunk is 523 kB minified. Split Three.js or lazy-load the 3D demo.
+11. **Make the doctor run the build.** Currently it checks prerequisites only. A "verified" status should come from a real build run.
 
 ## P2: polish and scale
 
-11. **Pin the framework dependency for releases.** The generated game uses a `file:` link. Switch to a pinned Git tag for shared builds.
-12. **Stream large music.** `AudioMixer` decodes whole files into memory, which is fine for effects but not for long tracks.
-13. **Menu focus and reduced motion** in the shared UI controller.
-14. **Release checklist**: versioning, changelog, store metadata, icons, and steps per target.
+12. **Release the framework as tagged versions.** Games now carry a copy of the tools, with a version and a content revision. Tag releases and add a changelog so "Update available" can say what changed.
+13. **Stream large music.** `AudioMixer` decodes whole files into memory, which is fine for effects but not for long tracks.
+14. **Menu focus and reduced motion** in the shared UI controller.
+15. **Release checklist**: versioning, changelog, store metadata, icons, and steps per target.
