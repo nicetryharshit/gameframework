@@ -13,3 +13,10 @@ src-tauri/gen/apple/Pods/
 src-tauri/gen/apple/**/xcuserdata/
 .smoke-game/
 .smoke-3d/
+
+# Third-party SDKs installed by hand (see docs/integrations/)
+vendor/*
+!vendor/README.md
+
+# macOS Finder metadata
+.DS_Store

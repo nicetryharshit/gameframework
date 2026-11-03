@@ -45,7 +45,9 @@
     "three": "^0.187.0"
   },
   "peerDependenciesMeta": {
-    "@tauri-apps/api": { "optional": true },
+    "@tauri-apps/api": {
+      "optional": true
+    },
     "pixi.js": {
       "optional": true
     },
@@ -57,7 +59,9 @@
     "dev": "vite",
     "create:game": "node scripts/create-game.mjs",
     "export:ui": "node scripts/export-ui/server.mjs",
+    "workshop": "node scripts/export-ui/server.mjs --open",
     "benchmark": "tsx scripts/benchmark.ts",
+    "doctor": "node scripts/doctor.mjs",
     "build": "tsc --noEmit && vite build",
     "build:web": "npm run build",
     "tauri": "tauri",

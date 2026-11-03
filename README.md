@@ -1,183 +1,94 @@
 # gameframework
 
-A small TypeScript game starter for **PixiJS (2D)** or **Three.js (3D)**, with shared game systems and a local visual build dashboard. Develop in the browser, then package the same game for desktop or mobile with Tauri.
+A starter for browser games made with **PixiJS (2D)** or **Three.js (3D)**. It includes shared game systems and a **Game Workshop** dashboard that builds the game for web, desktop and mobile, with no terminal needed after setup.
 
-Each new game starts with **Pocket Flight**, a removable Flappy-style example with menus, scoring, pause, restart, settings and a saved personal best.
+## Set up
 
-## On this page
+You need one thing installed first: **[Node.js 22 or newer](https://nodejs.org/)**. The launcher checks for it and opens the download page if it's missing. You don't need anything else for web games.
 
-- [Create your first game](#create-your-first-game)
-- [Run and test your game](#run-and-test-your-game)
-- [Build and export](#build-and-export)
-- [Replace the example](#replace-the-example)
-- [How the framework fits together](#how-the-framework-fits-together)
-- [Update an existing game](#update-an-existing-game)
-- [Detailed guides](#detailed-guides)
+1. **Open Game Workshop.**
+   - **Mac:** double-click `Game Workshop.command`. If macOS blocks it, right-click it and choose **Open**.
+   - **Windows:** double-click `Game Workshop.bat`. If SmartScreen blocks it, choose **More info → Run anyway**.
+   - **Linux:** double-click `Game Workshop.sh`, or run it from a terminal.
 
-## Create your first game
+   Your browser opens Game Workshop. Keep the launcher's window open while you use it.
 
-For browser development, you need Node.js 22+, npm, and a browser. Native builds also need Rust and the relevant platform SDKs; you can set those up later.
+2. **Install and test the framework (optional but recommended).** In the **Install and test** card, click **Install dependencies**, then **Run tests**. All tests should pass.
 
-From this framework checkout:
+3. **Create a game.** In the **New game** form, enter a name such as `testgame` and choose 2D or 3D, then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
 
-```sh
-npm install
-npm run create:game -- ../my-game 2d
-```
+Your game is now a separate project. It contains its own copy of the framework, so you can move or delete this folder afterwards.
 
-Use `3d` instead of `2d` to choose Three.js. The generator creates the destination directory, so **it must not already exist**.
+## Work on your game
 
-Then switch to your new game:
+Each game has its own copy of Game Workshop. Open it with the `Game Workshop` launcher inside the game folder, or with **Open game** from the framework dashboard.
 
-```sh
-cd ../my-game
-npm install
-npm run dev
-```
+- **Play it:** on the **Web** card, click **Play in browser**. Changes you save update the running game. If dependencies are missing, the card asks you to install them first.
+- **Edit your game:** the code lives in `src/`. The example game (Pocket Flight) can be replaced, file by file. See the game's `README.md`.
+- **Game details:** click **Game details** to set the name, version and identifier. Apple and Android use the identifier to tell apps apart.
 
-Open the URL printed in the terminal. Your game is ready to play.
+## Build for platforms
 
-Keep the framework and game as separate projects:
+Click a platform card. The card shows what's ready and what's missing, and its main button does the next step.
+
+| Platform | What the dashboard does | What you need on your computer |
+| --- | --- | --- |
+| **Web** | Builds a web game you can host or upload to itch.io, and previews it | Nothing extra |
+| **Windows** | Builds a Windows app | Windows, Rust and Visual Studio C++ build tools |
+| **macOS** | Builds a Mac app | A Mac, Rust and Xcode command line tools |
+| **Linux** | Builds a Linux app | Linux, Rust and WebKitGTK 4.1 |
+| **iPhone and iPad** | Sets up an Xcode project, then opens it in Xcode | A Mac, Xcode, Rust, and an Apple developer account for devices |
+| **Android** | Sets up an Android project, builds an APK, and opens Android Studio | Android Studio, Java, the Android SDK and NDK, and Rust |
+
+Each build gets its own folder under `Builds/`, with a download link and a build report. The **Test build** and **Release build** switch chooses the mode. Release builds for Android need signing, which isn't set up yet.
+
+The dashboard doesn't install Xcode, Android Studio, or Rust for you. Each card's checklist says what's missing and how to fix it. Click **Check again** after installing something to update the status.
+
+### Steam (optional)
+
+Steam is an add-on for desktop builds. Click **See steps** on the Steam card and follow the checklist. You need a Steamworks partner account and the Steamworks SDK, which you download yourself and place in `vendor/steamworks/sdk`. Steam uploads aren't automated yet. The full steps are in `docs/integrations/steam.md`.
+
+## How the project is organised
 
 ```text
-Projects/
-  gameframework/   ← shared framework checkout
-  my-game/            ← your game's own repository
+gameframework/            ← this folder: the framework and Game Workshop
+  Game Workshop.command   ← double-click launchers (Mac, Windows, Linux)
+  src/framework/          ← shared systems: state, events, UI, input, saves, audio
+  src/renderers/          ← PixiJS and Three.js helpers
+  scripts/export-ui/      ← the Game Workshop dashboard
+  docs/                   ← guides
+  testgame/               ← created by New game (sits next to this folder)
+    tools/gameframework/  ← a copy of the framework, so the game stands alone
+    src/                  ← your game
+    src-tauri/            ← desktop and mobile configuration
+    Builds/               ← build output (ignored by Git)
 ```
 
-The generated game uses a local dependency on the framework. You do not need a nested clone. When you want to share or release the game, pin that dependency to a framework Git commit or tag. See [updating and sharing games](docs/UPGRADING.md).
+Use the framework folder to create games and to test the framework. Use each game's folder for everything else.
 
-## Run and test your game
+## Terminal commands (optional)
 
-Run these commands **from your game directory**:
+Everything above can also be done from a terminal, which is useful for scripts or CI. Run these from the matching folder:
 
-| What you want | What to use |
+| Task | Command |
 | --- | --- |
-| Quickly play while editing code | `npm run dev` |
-| Open the visual development/export tools | `npm run export:ui` |
-| Produce web files from the terminal | `npm run build:web` |
+| Install dependencies | `npm install` |
+| Run the framework tests | `npm test` |
+| Check your setup | `npm run doctor` |
+| Create a game | `npm run create:game -- ../testgame 2d` (or `3d`) |
+| Open Game Workshop | `npm run workshop` (or `npm run export:ui` without opening the browser) |
+| Play in a browser | `npm run dev` |
+| Build for the web | `npm run build` |
 
-### Use the visual dashboard
-
-```sh
-npm run export:ui
-```
-
-This starts the **dashboard**, not a game build. Open the local URL printed in the terminal, normally `http://127.0.0.1:4179`.
-
-Select **Web**, then choose an action:
-
-| Dashboard action | What happens |
-| --- | --- |
-| **Run Dev Server** | Starts the game with live source updates. No export build is created. |
-| **Build** | Checks TypeScript, builds the game, and collects the exported files. |
-| **Build & Run** | Builds an export and gives you a link to preview that finished snapshot. |
-
-For everyday development, use **Run Dev Server → Open live game**. Changes to your source update the running game. The dev server uses port 5173; stop an existing server on that port before starting another.
-
-Use **Stop Session** to end a dev session. Closing the game tab does not stop the server. Keep the dashboard's terminal open; Ctrl+C stops the dashboard and its active build/session.
-
-### Try the example
-
-Tap the sky, press Space/Enter, or use controller A to flap. Pass a pipe to score; hitting a pipe, the ceiling or the ground ends the run.
-
-- Menus: arrows, D-pad or vertical stick to navigate; Space/Enter/A to select.
-- Pause/resume: Escape or controller Start.
-- Settings: available from the main and pause menus.
-- Desktop fullscreen toggle: F11.
-
-To try examples directly in the framework checkout, run `npm run dev`. The root page uses PixiJS; open `/3d.html` for the Three.js version.
-
-## Build and export
-
-The easiest route is **`npm run export:ui`**. Choose a platform, select Development or Release, check the prerequisites, then build or open its native project.
-
-The dashboard provides saved profiles, live logs, cancellation, output-folder links and build reports. Profiles are stored in `export-profiles.json`; commit this file with your game. Collected artifacts go into `Builds/<platform>/<mode>/<build-id>/`, which is ignored by Git.
-
-| Target | Current workflow and output |
-| --- | --- |
-| **Web** | Export static files for hosting or itch.io. The terminal command writes `dist/`; the dashboard also collects a separate snapshot under `Builds/`. |
-| **Windows / macOS / Linux** | Build on the matching operating system. Tauri produces a desktop app and the configured bundles/installers. Desktop builds currently skip signing. |
-| **Android** | Initialize an editable Android Studio/Gradle project, then build a development debug APK. Dashboard release builds are disabled until release signing is configured. |
-| **iOS** | On your Mac, initialize an editable Xcode project, then open Xcode for simulator/device work. Dashboard archive/export builds are disabled until signing is configured. |
-
-Desktop games start fullscreen without a title bar. Their Settings menu includes fullscreen/windowed/borderless mode, window-size presets, frame limit, render quality, volume controls and mute. Saved preferences are restored on launch, and a Quit button is available on desktop.
-
-### Open native mobile projects
-
-Set your app identifier and icons in `src-tauri` before initializing mobile projects. Then run:
-
-```sh
-# iOS — on your Mac
-npm run init:ios
-npm run open:ios
-
-# Android
-npm run init:android
-npm run open:android
-```
-
-The editable projects live in `src-tauri/gen/apple/` and `src-tauri/gen/android/`. Initialize them once, keep customizations in your game's Git repository, and preserve them between builds. They remain integrated with the rest of the game source.
-
-For SDK requirements, command-line alternatives and exact output locations, see [desktop and mobile builds](docs/PLATFORM-BUILDS.md). For dashboard profiles and supported actions, see [the dashboard guide](docs/EXPORT-DASHBOARD.md).
-
-## Replace the example
-
-Pocket Flight belongs to your generated game; its rules are separate from the shared framework.
-
-| Generated file | What it contains |
-| --- | --- |
-| `src/flappy.ts` | Gameplay rules, movement, collisions and scoring |
-| `src/demo.ts` | Main menu, gameplay, pause and game-over flow |
-| `src/demo-settings.ts` | The example settings screen |
-| `src/demo-2d.ts` **or** `src/demo-3d.ts` | Renderer setup, visual objects and game entry point |
-| `src/demo.css` | Example layout and styling |
-
-Replace these files as your game takes shape, or remove them and point `index.html` at your own entry file. Keep `package.json`, `vite.config.ts` and `src-tauri` for the development/export setup.
-
-Choose a unique save/settings namespace when adapting the example; the sample uses `pocket-flight`.
-
-## How the framework fits together
-
-The game world is drawn into a **canvas** by PixiJS or Three.js. Menus and the HUD use **HTML/CSS over the canvas**.
-
-If you come from Unity: Pixi's stage is a hierarchy of 2D objects; Three's scene contains meshes, lights and cameras. The framework's state manager controls game flow such as menu, playing and paused. The game loop updates the active state and asks your renderer to draw.
-
-| Shared service | Purpose |
-| --- | --- |
-| `GameLoop` | Frame timing, capped delta time and optional frame limiting |
-| `StateManager` | `enter`, `update` and `exit` hooks for game flow |
-| `EventBus` | Typed events and removable subscriptions |
-| `UIController` | Show/hide DOM menu screens |
-| `Input` / pointer helpers | Keyboard, gamepad, analog actions, touch and virtual buttons |
-| Save/settings stores | Validated versioned data, migration and error reporting |
-| `AudioMixer` | Music/effects buses, volume, playback and voice limits |
-| Lifecycle / viewport helpers | Background pause signals, scaling and coordinate mapping |
-| `DebugOverlay` | Optional FPS and game-state display; try `?debug` on an example URL |
-
-The core has no runtime library dependencies. Renderer and native-window imports are separate, and the helpers expose the actual libraries so you can use their full APIs.
-
-See [framework API and lifecycle notes](docs/FRAMEWORK.md) for imports, a small code example and cleanup guidance.
-
-## Update an existing game
-
-**Generate once; update the dependency later.** You do not need to recreate your game.
-
-- With the default local link, edits to the framework source are available to the game. Restart the dev server if needed.
-- For shared/release builds, install a newer pinned framework Git commit/tag, test the game, and commit its updated `package.json` and lockfile.
-- Copied game files, build scripts and native configuration belong to the game. Dependency updates do not rewrite them.
-
-For the exact commands, rollback, copied-file updates and adding the dashboard to older games, use [the upgrade guide](docs/UPGRADING.md) and [dashboard setup for existing games](docs/EXPORT-DASHBOARD.md#existing-games).
-
-## Detailed guides
+## Guides
 
 | Guide | When to read it |
 | --- | --- |
-| [Visual export dashboard](docs/EXPORT-DASHBOARD.md) | Profiles, live dev sessions, builds, logs and output folders |
-| [Desktop and mobile builds](docs/PLATFORM-BUILDS.md) | Platform SDKs, fullscreen settings, Xcode/Android Studio and native outputs |
-| [Framework API](docs/FRAMEWORK.md) | Shared services, imports and lifecycle/cleanup details |
-| [Updating games](docs/UPGRADING.md) | Dependency updates, compatibility and preserving game-owned files |
+| [Game Workshop](docs/EXPORT-DASHBOARD.md) | What each part of the dashboard does |
+| [Desktop and mobile builds](docs/PLATFORM-BUILDS.md) | Platform requirements and native project details |
+| [Framework API](docs/FRAMEWORK.md) | Shared systems and how to use them in code |
+| [Steam](docs/integrations/steam.md) | Steamworks setup, step by step |
+| [Updating games](docs/UPGRADING.md) | Bringing a newer framework into an existing game |
+| [Roadmap](docs/ROADMAP.md) | What's done, what's next, and what hasn't been tested yet |
 
-To check changes in **this framework repository**, run `npm test` and `npm run build`. `npm run benchmark` measures input polling only. GitHub checks are optional; the inactive template is in `templates/github/`.
-
-Store signing, notarization, store uploads, Steamworks, physics and cloud saves are separate integrations. Platform builds still need testing on actual target devices.
+To check changes to this framework, run the tests from the Install and test card, or `npm test`.

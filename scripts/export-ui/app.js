@@ -1,105 +1,307 @@
 const token = document.querySelector('meta[name="export-token"]').content;
 const $ = selector => document.querySelector(selector);
-const targets = {
-  web: { title: 'Web', icon: '◎', subtitle: 'Browser / itch.io', description: 'Run the game immediately with live updates, or export a portable build for your hosting service.', help: 'Run Dev Server starts Vite without building. Build & Run exports a snapshot and provides a preview link. App name/version/identifier are report metadata for web; page branding comes from your source.' },
-  windows: { title: 'Windows', icon: '⊞', subtitle: 'Desktop / Steam', description: 'Build a Windows executable and installers. Requires Windows, Rust, MSVC build tools and WebView2.', help: 'Desktop release builds skip signing. Development Build & Run starts a live Tauri session; stop it from the console when finished.' },
-  macos: { title: 'macOS', icon: '◒', subtitle: 'Desktop', description: 'Build the desktop app on your Mac. Requires Rust and Apple build tools.', help: 'Unsigned apps are for local testing. Notarization and store signing are separate steps.' },
-  linux: { title: 'Linux', icon: '◇', subtitle: 'Desktop / Steam', description: 'Build on Linux with Rust and the required WebKit/system packages.', help: 'Artifacts depend on the bundle formats in your Tauri configuration. Cross-compilation is not configured.' },
-  android: { title: 'Android', icon: '♧', subtitle: 'APK / native project', description: 'Create a debug APK or open the editable Android Studio project. Requires Java, Android SDK/NDK and Rust Android targets.', help: 'Initialize the native project once. Release signing is not configured; release setup belongs in Android Studio. Opening the project starts a development session.' },
-  ios: { title: 'iOS', icon: '▯', subtitle: 'Xcode / simulator', description: 'Generate and open an editable Xcode project on your Mac, then build for a simulator or configured device.', help: 'Use Initialize and Open Native Project. Automated iOS archives are intentionally unavailable until signing is configured. Keep the whole game repository alongside Xcode.' }
+
+const PLATFORMS = [
+  { id: 'web', name: 'Web', blurb: 'Play in a browser, or upload to itch.io' },
+  { id: 'windows', name: 'Windows', blurb: 'Desktop app with an installer', host: 'win32', hostName: 'Windows' },
+  { id: 'macos', name: 'macOS', blurb: 'Desktop app for Mac', host: 'darwin', hostName: 'Mac' },
+  { id: 'linux', name: 'Linux', blurb: 'Desktop app for Linux', host: 'linux', hostName: 'Linux' },
+  { id: 'ios', name: 'iPhone and iPad', blurb: 'Opens in Xcode to run and publish', host: 'darwin', hostName: 'Mac', project: true },
+  { id: 'android', name: 'Android', blurb: 'Phone app (APK), opens in Android Studio', project: true }
+];
+const ADDONS = [{ id: 'steam', name: 'Steam', blurb: 'Sell your desktop builds on Steam' }];
+const TOOLS = { id: 'framework', name: 'Install and test', blurb: 'Install dependencies, and run the framework tests', profileId: 'web' };
+const DONE = {
+  build: 'Your build is ready.',
+  run: 'Your game is built. Open the preview to play it.',
+  dev: 'Your game is running. Changes you save update it live.',
+  install: 'Dependencies are installed. You can play and build now.',
+  test: 'All tests passed.',
+  'initialize:ios': 'Project created. Next, open it in Xcode.',
+  'initialize:android': 'Project created. Next, open it in Android Studio.',
+  'open:ios': 'Xcode should be open. Build and run from there.',
+  'open:android': 'Your project folder is open. In Android Studio, choose File › Open.'
 };
-let state, platform = 'web', mode = 'development', dirty = false, selectedJob, lastLog = '', checking = false;
-const drafts = new Map();
-let artifactKey;
-function stashDraft() { if (dirty) drafts.set(`${platform}-${mode}`, draft()); }
-const notice = message => { $('#notice').hidden = !message; $('#notice').textContent = message || ''; };
+
+let state = null;
+const checks = {};
+let mode = 'development';
+let openId = null;
+let selectedJob = null;
+const panelOf = new Map();
+const seenJobs = new Set();
+let booted = false;
+let lastSignature = '';
+
+function say(message = '') { const box = $('#notice'); box.textContent = message; box.hidden = !message; }
+function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+function button(label, onClick, className = 'primary') { const node = el('button', className, label); node.type = 'button'; node.addEventListener('click', onClick); return node; }
+function link(label, href) { const node = el('a', 'link-button', label); node.href = href; node.target = '_blank'; node.rel = 'noopener'; return node; }
 async function api(route, body) {
-  const response = await fetch(`/api/${route}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'X-Export-Token': token, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-  const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Request failed'); return data;
+  const options = { method: body === undefined ? 'GET' : 'POST', headers: { 'X-Export-Token': token } };
+  if (body !== undefined) { options.headers['Content-Type'] = 'application/json'; options.body = JSON.stringify(body); }
+  const response = await fetch(`/api/${route}`, options);
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+  return data;
 }
-function draft() { return { platform, mode, ...Object.fromEntries(new FormData($('#profile-form'))) }; }
-function updateAvailability() {
-  const active = !!state?.active;
-  const supportedHost = !({ windows: 'win32', macos: 'darwin', linux: 'linux', ios: 'darwin' }[platform]) || ({ windows: 'win32', macos: 'darwin', linux: 'linux', ios: 'darwin' }[platform]) === state?.project.host;
-  const unavailable = platform === 'ios' || (platform === 'android' && mode === 'release');
-  $('#build').disabled = $('#run').disabled = active || !supportedHost || unavailable;
-  $('#initialize').disabled = $('#open-native').disabled = active || !supportedHost;
-  $('#save-profile').disabled = active;
-  $('#stop').hidden = !active;
-  $('#native-actions').hidden = !['ios', 'android'].includes(platform);
-  $('#web-dev-actions').hidden = platform !== 'web';
-  $('#dev').disabled = active;
+
+const isFramework = () => state?.project.kind === 'framework';
+const check = (id, name) => checks[id]?.checks.find(item => item.name === name);
+const projectReady = id => !!check(id, 'Native project')?.ok;
+const hostBlocked = platform => !!checks[platform.id]?.checks.some(item => item.name === 'Build host' && !item.ok);
+const missingDependencies = id => check(id, 'TypeScript')?.ok === false;
+
+function statusOf(platform) {
+  const result = checks[platform.id];
+  if (!result) return { kind: 'loading', text: 'Checking…' };
+  if (hostBlocked(platform)) return { kind: 'blocked', text: `Needs a ${platform.hostName} computer` };
+  if (!result.ready) return { kind: 'setup', text: 'Setup needed' };
+  if (platform.project && !projectReady(platform.id)) return { kind: 'new', text: 'Not set up yet' };
+  return { kind: 'ready', text: platform.project ? 'Project ready' : 'Ready' };
 }
-function renderProfile() {
-  $('#targets').replaceChildren();
-  for (const [key, target] of Object.entries(targets)) {
-    const button = document.createElement('button'); button.className = `target${key === platform ? ' active' : ''}`;
-    button.setAttribute('aria-pressed', String(key === platform));
-    const icon = document.createElement('span'); icon.className = 'platform-icon'; icon.textContent = target.icon;
-    const text = document.createElement('span'); const title = document.createElement('strong'); title.textContent = target.title; const sub = document.createElement('small'); sub.textContent = target.subtitle; text.append(title, sub); button.append(icon, text);
-    button.addEventListener('click', () => { stashDraft(); platform = key; renderProfile(); void checks(); }); $('#targets').append(button);
-  }
-  const profile = drafts.get(`${platform}-${mode}`) || state.project.profiles[`${platform}-${mode}`];
-  dirty = drafts.has(`${platform}-${mode}`);
-  for (const key of ['name', 'version', 'identifier']) $('#profile-form').elements[key].value = profile[key];
-  $('#target-title').textContent = targets[platform].title; $('#target-description').textContent = targets[platform].description; $('#target-help').textContent = targets[platform].help;
-  $('#profile-status').textContent = mode === 'development' ? 'Development' : 'Release';
-  $('#output-location').textContent = `Builds/${platform}/${mode}/<build-id>/`;
-  $('#saved-state').textContent = dirty ? 'Unsaved changes' : 'Saved profile / defaults';
-  for (const button of document.querySelectorAll('[data-mode]')) { button.classList.toggle('selected', button.dataset.mode === mode); button.setAttribute('aria-pressed', String(button.dataset.mode === mode)); }
-  updateAvailability();
+
+function actionsFor(platform) {
+  if (platform.id === 'ios') return projectReady('ios') ? [{ label: 'Open in Xcode', action: 'open' }] : [{ label: 'Set up iOS project', action: 'initialize' }];
+  if (platform.id === 'android') return projectReady('android')
+    ? [{ label: 'Build APK', action: 'build' }, { label: 'Open in Android Studio', action: 'open' }]
+    : [{ label: 'Set up Android project', action: 'initialize' }];
+  if (platform.id === 'web') return [{ label: 'Play in browser', action: 'dev' }, { label: 'Build web game', action: 'build' }, { label: 'Build and preview', action: 'run' }];
+  if (platform.id === 'framework') return [{ label: 'Install dependencies', action: 'install' }, ...(state?.project.hasTests ? [{ label: 'Run tests', action: 'test' }] : [])];
+  return [{ label: `Build ${platform.name} app`, action: 'build' }];
 }
-async function checks() {
-  if (checking) return;
-  checking = true; $('#check').disabled = true; const target = platform;
-  try {
-    const result = await api('check', { platform: target });
-    if (platform !== target) return;
-    $('#checks').replaceChildren();
-    for (const check of result.checks) {
-      const item = document.createElement('div'); item.className = `check-item${check.ok ? '' : ' missing'}`;
-      const icon = document.createElement('span'); icon.className = 'check-icon'; icon.textContent = check.ok ? '✓' : '○';
-      const text = document.createElement('div'); const title = document.createElement('strong'); title.textContent = check.name; const detail = document.createElement('p'); detail.textContent = check.detail; text.append(title, detail); item.append(icon, text); $('#checks').append(item);
-    }
-    $('#check-note').textContent = result.note;
-  } catch (error) { notice(error.message); }
-  finally { checking = false; $('#check').disabled = false; if (platform !== target) void checks(); }
+
+/** Installing dependencies comes first whenever they are missing, because nothing else can run without them. */
+function optionsFor(platform) {
+  const options = actionsFor(platform);
+  return platform.id !== 'framework' && missingDependencies(platform.id) ? [{ label: 'Install dependencies', action: 'install' }, ...options] : options;
 }
-function renderJob() {
-  const job = state.jobs.find(job => job.id === selectedJob) || state.jobs.at(-1);
+
+function primaryFor(platform, status) {
+  if (status.kind === 'blocked') return { label: 'See what’s needed', run: () => openPanel(platform.id), style: 'secondary' };
+  if (missingDependencies(platform.id)) return { label: 'Install dependencies', run: () => run(platform, 'install'), style: 'primary' };
+  if (status.kind === 'setup') return { label: 'See what’s needed', run: () => openPanel(platform.id), style: 'secondary' };
+  const first = actionsFor(platform)[0];
+  return { label: first.label, run: () => run(platform, first.action), style: 'primary' };
+}
+
+function platformCard(platform) {
+  const status = statusOf(platform);
+  const card = el('article', `card ${status.kind}`);
+  card.append(el('h3', '', platform.name), el('p', 'blurb', platform.blurb), el('p', 'status', status.text));
+  if (status.kind === 'loading') { const wait = button('Checking…', () => {}, 'secondary'); wait.disabled = true; card.append(wait); }
+  else { const primary = primaryFor(platform, status); card.append(button(primary.label, primary.run, primary.style)); }
+  card.append(button('Details', () => openPanel(platform.id), 'link'));
+  return card;
+}
+
+function addonCard(addon) {
+  const ready = !!checks.steam?.ready;
+  const text = !checks.steam ? 'Checking…' : ready ? 'Ready to connect' : 'Needs the Steamworks SDK';
+  const card = el('article', `card ${ready ? 'ready' : 'setup'}`);
+  card.append(el('h3', '', addon.name), el('p', 'blurb', addon.blurb), el('p', 'status', text), button('See steps', () => openPanel('steam'), 'secondary'));
+  return card;
+}
+
+function toolCard(tool) {
+  const card = el('article', 'card');
+  card.append(el('h3', '', tool.name), el('p', 'blurb', tool.blurb), button('Open', () => openPanel(tool.id), 'secondary'));
+  return card;
+}
+
+function stepItem(check) {
+  const item = el('li', check.ok ? 'step ok' : check.blocking ? 'step missing' : 'step optional');
+  item.append(el('strong', '', `${check.ok ? '✓' : check.blocking ? '✕' : '○'} ${check.name}`));
+  if (!check.ok) item.append(el('small', '', check.detail));
+  return item;
+}
+
+function renderResult(platform, job) {
+  const box = $('#result');
+  box.replaceChildren();
+  box.hidden = !job;
   if (!job) return;
-  $('#job-status').textContent = job.status;
-  $('#dev-session').hidden = job.action !== 'dev' || job.status !== 'running';
-  $('#dev-status').textContent = job.devUrl ? 'Dev server running · source changes update live' : 'Starting dev server…';
-  $('#dev-link').hidden = !job.devUrl || job.status !== 'running';
-  if (job.devUrl) $('#dev-link').href = job.devUrl;
-  const text = job.log || 'Checking build prerequisites…';
-  if (text !== lastLog) { const pinned = $('#log').scrollTop + $('#log').clientHeight >= $('#log').scrollHeight - 40; $('#log').textContent = text; if (pinned) $('#log').scrollTop = $('#log').scrollHeight; lastLog = text; }
-  $('#artifacts').hidden = !job.output;
-  if (job.output && artifactKey !== job.id) {
-    artifactKey = job.id;
-    $('#artifacts').replaceChildren(); const label = document.createElement('div'); label.textContent = `Output · ${job.output.directory}`; $('#artifacts').append(label);
-    const reveal = document.createElement('button'); reveal.className = 'text-button'; reveal.textContent = 'Open output folder ↗'; reveal.onclick = () => api('reveal', { id: job.id }).catch(error => notice(error.message)); $('#artifacts').append(reveal);
-    if (job.profile.platform === 'web') { const preview = document.createElement('a'); preview.href = `/preview/${job.id}/`; preview.target = '_blank'; preview.rel = 'noopener'; preview.textContent = 'Open web preview ↗'; $('#artifacts').append(preview); }
-    for (const artifact of job.output.artifacts.filter(file => !file.directory)) { const link = document.createElement('a'); link.href = `/artifact/${job.id}/${encodeURIComponent(artifact.name)}`; link.textContent = `${artifact.name} · ${(artifact.bytes / 1048576).toFixed(1)} MB`; $('#artifacts').append(link); }
+  const key = `${job.action}:${platform.id}`;
+  const text = job.status === 'running' ? (job.devUrl ? 'Your game is running. Changes you save update it live.' : 'Working on it. This can take a few minutes.')
+    : job.status === 'succeeded' ? (DONE[key] || DONE[job.action] || 'Done.')
+    : job.status === 'cancelled' ? 'Stopped.'
+    : 'That didn’t finish. Open details to see why.';
+  box.append(el('p', 'result-text', text));
+  const links = el('div', 'links');
+  if (job.status === 'running' && job.devUrl) links.append(link('Open live game', job.devUrl));
+  if (job.status === 'succeeded' && job.action === 'run' && job.profile.platform === 'web') links.append(link('Open preview', `/preview/${job.id}/`));
+  if (job.status === 'succeeded' && job.output) {
+    links.append(button('Open output folder', () => api('reveal', { id: job.id }).catch(error => say(error.message)), 'secondary'));
+    for (const file of job.output.artifacts.filter(item => !item.directory && item.name !== 'build-report.json')) {
+      const download = el('a', 'file-link', `Download ${file.name} (${(file.bytes / 1048576).toFixed(1)} MB)`);
+      download.href = `/artifact/${job.id}/${encodeURIComponent(file.name)}`;
+      links.append(download);
+    }
   }
+  if (links.childElementCount) box.append(links);
 }
-async function refresh() { state = await api('state'); $('#project-name').textContent = state.project.name; $('#project-path').textContent = state.project.root; $('#host').textContent = { win32: 'Windows workstation', darwin: 'Mac workstation', linux: 'Linux workstation' }[state.project.host] || state.project.host; renderJob(); updateAvailability(); }
-async function start(action) {
+
+function renderPanel() {
+  const panel = $('#panel');
+  panel.hidden = !openId;
+  if (!openId) return;
+  const isSteam = openId === 'steam';
+  const isTools = openId === 'framework';
+  const platform = isSteam ? ADDONS[0] : isTools ? TOOLS : PLATFORMS.find(item => item.id === openId);
+  const job = state?.jobs.find(item => item.id === selectedJob);
+  const running = job?.status === 'running';
+  const isAndroidRelease = openId === 'android' && mode === 'release';
+
+  $('#panel-title').textContent = platform.name;
+  $('#panel-lead').textContent = platform.blurb;
+  const steps = $('#steps'); steps.replaceChildren();
+  $('#needs-heading').hidden = isTools;
+  steps.hidden = isTools;
+  $('#recheck').hidden = isTools;
+  if (!isTools) {
+    if (!checks[openId]) steps.append(el('li', 'step', 'Checking…'));
+    for (const item of checks[openId]?.checks ?? []) steps.append(stepItem(item));
+  }
+  $('#modes').hidden = isSteam || isTools || openId === 'ios';
+  for (const option of $('#modes').querySelectorAll('button')) {
+    const selected = option.dataset.mode === mode;
+    option.classList.toggle('selected', selected);
+    option.setAttribute('aria-pressed', String(selected));
+  }
+  $('#hint').hidden = !isAndroidRelease;
+  $('#hint').textContent = 'Release builds for Android need signing, which isn’t set up yet. Use a test build for now.';
+
+  const actions = $('#actions'); actions.replaceChildren();
+  if (isSteam) actions.append(el('p', 'hint', 'Steam uploads are not automated yet. Once the SDK is in place, upload your Windows, macOS or Linux build with Steam’s upload tools.'));
+  else if (isTools || (checks[openId] && !hostBlocked(platform))) {
+    const options = isTools ? actionsFor(TOOLS) : optionsFor(platform);
+    options.forEach((option, index) => {
+      const node = button(option.label, () => run(platform, option.action), index === 0 ? 'primary' : 'secondary');
+      node.disabled = running || (isAndroidRelease && option.action === 'build');
+      actions.append(node);
+    });
+  }
+  renderResult(platform, job);
+  $('#stop').hidden = !running;
+  $('#log').textContent = job ? (job.log || 'Starting…') : 'Nothing has run yet.';
+}
+
+function renderCards() {
+  if (isFramework()) {
+    $('#tools').replaceChildren(toolCard(TOOLS));
+    return;
+  }
+  $('#cards').replaceChildren(...PLATFORMS.map(platformCard));
+  $('#addons').replaceChildren(...ADDONS.map(addonCard));
+}
+
+function draw(force = false) {
+  const signature = JSON.stringify([
+    state?.project.kind,
+    Object.keys(checks).sort().map(id => [id, checks[id].ready, checks[id].checks.map(item => item.ok)]),
+    state?.jobs.map(job => [job.id, job.status, !!job.output, job.log.length, job.devUrl ?? null]) ?? [],
+    openId, mode, selectedJob
+  ]);
+  if (!force && signature === lastSignature) return;
+  lastSignature = signature;
+  $('#workshop').hidden = !isFramework();
+  $('#game-home').hidden = isFramework();
+  $('#edit-game').hidden = isFramework();
+  renderCards();
+  renderPanel();
+}
+
+function openPanel(id) {
+  openId = id;
+  selectedJob = id === 'steam' ? null : (state?.jobs.findLast(job => (panelOf.get(job.id) ?? job.profile.platform) === id)?.id ?? null);
+  if (id !== 'framework' && !checks[id]) void loadCheck(id);
+  say('');
+  draw(true);
+}
+
+async function loadCheck(id) {
+  try { checks[id] = await api('check', { platform: id }); }
+  catch (error) { say(error.message); }
+  draw(true);
+}
+
+async function loadAllChecks() {
+  await Promise.all([...PLATFORMS, ...ADDONS].map(item => loadCheck(item.id)));
+}
+
+async function run(platform, action) {
+  say('');
+  if (!state) return;
   try {
-    notice(''); const profile = draft();
-    if (!$('#profile-form').reportValidity()) return;
-    await api('profile', profile); drafts.delete(`${platform}-${mode}`); dirty = false; $('#saved-state').textContent = 'Profile saved';
-    const result = await api('start', { profile, action }); selectedJob = result.id; lastLog = ''; $('#artifacts').hidden = true; await refresh();
-  } catch (error) { notice(error.message); }
+    const profile = state.project.profiles[`${platform.profileId ?? platform.id}-${mode}`];
+    const { id } = await api('start', { profile, action });
+    panelOf.set(id, platform.id);
+    openId = platform.id; selectedJob = id; draw(true);
+  } catch (error) { say(error.message); }
 }
-$('#profile-form').addEventListener('input', () => { dirty = true; $('#saved-state').textContent = 'Unsaved changes'; });
-$('#profile-form').addEventListener('submit', async event => { event.preventDefault(); try { const profile = await api('profile', draft()); state.project.profiles[`${platform}-${mode}`] = profile; drafts.delete(`${platform}-${mode}`); dirty = false; $('#saved-state').textContent = 'Profile saved'; notice(''); } catch (error) { notice(error.message); } });
-for (const button of document.querySelectorAll('[data-mode]')) button.onclick = () => { stashDraft(); mode = button.dataset.mode; renderProfile(); };
-$('#build').onclick = () => start('build'); $('#run').onclick = () => start('run'); $('#initialize').onclick = () => start('initialize'); $('#open-native').onclick = () => start('open');
-$('#dev').onclick = () => start('dev');
-$('#check').onclick = checks; $('#stop').onclick = () => api('stop', {}).catch(error => notice(error.message));
-$('#copy-log').onclick = () => navigator.clipboard.writeText($('#log').textContent).catch(() => notice('Select and copy the log text manually.'));
-window.addEventListener('beforeunload', event => { if (dirty || drafts.size) { event.preventDefault(); event.returnValue = ''; } });
-try { await refresh(); renderProfile(); void checks(); } catch (error) { notice(error.message); }
-setInterval(() => { void refresh().catch(() => notice('Dashboard disconnected. Restart npm run export:ui and reload.')); }, 1000);
+
+async function refresh() {
+  state = await api('state');
+  $('#game-name').textContent = state.project.name;
+  for (const job of state.jobs) {
+    if (job.status === 'running' || seenJobs.has(job.id)) continue;
+    seenJobs.add(job.id);
+    if (!booted) continue;
+    if (job.action === 'install') void loadAllChecks();
+    else void loadCheck(job.profile.platform);
+  }
+  booted = true;
+  draw();
+}
+
+function showOpened(folder, url, verb) {
+  const box = $('#workshop-result');
+  box.replaceChildren(el('p', 'result-text', `${verb} ${folder}. Its dashboard should open in your browser.`), link(`Open ${folder}`, url));
+  box.hidden = false;
+}
+
+$('#create-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  try {
+    const { folder } = await api('create', Object.fromEntries(new FormData(event.currentTarget)));
+    const { url } = await api('open-game', { folder });
+    showOpened(folder, url, 'Created');
+  } catch (error) { say(error.message); }
+});
+$('#open-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const folder = new FormData(event.currentTarget).get('folder').trim();
+  try { const { url } = await api('open-game', { folder }); showOpened(folder, url, 'Opened'); }
+  catch (error) { say(error.message); }
+});
+
+$('#close').onclick = () => { openId = null; draw(true); };
+$('#recheck').onclick = () => { if (openId && openId !== 'framework') void loadCheck(openId); };
+$('#stop').onclick = () => api('stop', {}).catch(error => say(error.message));
+$('#copy').onclick = () => navigator.clipboard.writeText($('#log').textContent).then(() => say('Log copied.'), () => say('Select the log text and copy it manually.'));
+for (const option of $('#modes').querySelectorAll('button')) option.onclick = () => { mode = option.dataset.mode; draw(true); };
+document.addEventListener('keydown', event => { if (event.key === 'Escape' && openId && !$('#game-dialog').open) { openId = null; draw(true); } });
+
+$('#edit-game').onclick = () => {
+  const form = $('#game-form'); const profile = state.project.profiles['web-development'];
+  for (const key of ['name', 'version', 'identifier']) form.elements[key].value = profile[key];
+  $('#game-error').hidden = true;
+  $('#game-dialog').showModal();
+};
+$('#cancel-game').onclick = () => $('#game-dialog').close();
+$('#game-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const values = Object.fromEntries(new FormData(event.currentTarget));
+  try {
+    for (const key of Object.keys(state.project.profiles)) await api('profile', { ...state.project.profiles[key], ...values });
+    state = await api('state');
+    $('#game-dialog').close();
+    say('Game details saved.');
+  } catch (error) { $('#game-error').textContent = error.message; $('#game-error').hidden = false; }
+});
+
+setInterval(() => { refresh().catch(() => say('Lost connection to Game Workshop. Restart it and reload this page.')); }, 1000);
+try {
+  await refresh();
+  await loadAllChecks();
+} catch (error) { say(error.message); }

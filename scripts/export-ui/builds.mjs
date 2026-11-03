@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { readdirSync, readFileSync } from 'node:fs';
 import { access, readFile, mkdir, writeFile, readdir, cp, stat, rename } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -24,7 +25,7 @@ export async function projectInfo(root) {
     profiles[id] = validateProfile(profiles[id] ?? { platform, mode, name: config.productName || pkg.name, version: config.version || pkg.version || '0.1.0', identifier: config.identifier || 'com.example.game' });
     if (profileId(profiles[id]) !== id) throw new Error(`Mismatched profile: ${id}`);
   }
-  return { name: config.productName || pkg.name, root, host: process.platform, profiles };
+  return { name: config.productName || pkg.name, root, host: process.platform, kind: pkg.name === 'gameframework' ? 'framework' : 'game', hasTests: Boolean(pkg.scripts?.test), profiles };
 }
 export async function saveProfile(root, profile) {
   const info = await projectInfo(root); const value = validateProfile(profile);
@@ -40,9 +41,20 @@ function tool(root, name) {
   const pkg = parts.slice(0, count).join('/');
   return path.join(path.dirname(createRequire(path.join(root, 'package.json')).resolve(`${pkg}/package.json`)), ...parts.slice(count));
 }
+/** npm is run through the same Node that started the dashboard when possible, so it works without a shell on every OS. */
+function npmStep(args) {
+  const cli = process.env.npm_execpath;
+  if (cli && cli.endsWith('.js')) return { command: process.execPath, args: [cli, ...args], shell: false };
+  return process.platform === 'win32' ? { command: 'npm.cmd', args, shell: true } : { command: 'npm', args, shell: false };
+}
 export function buildPlan(root, profile, action, host = process.platform) {
   const p = validateProfile(profile);
-  if (!['build', 'run', 'dev', 'initialize', 'open'].includes(action)) throw new Error('Unknown export action');
+  if (!['build', 'run', 'dev', 'initialize', 'open', 'install', 'test'].includes(action)) throw new Error('Unknown export action');
+  if (action === 'install') return [{ ...npmStep(['install']), title: 'Install dependencies' }];
+  if (action === 'test') {
+    if (!JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).scripts?.test) throw new Error('This project has no tests.');
+    return [{ ...npmStep(['test']), title: 'Run tests' }];
+  }
   if (action === 'dev' && p.platform !== 'web') throw new Error('Run Dev Server is only available for web');
   if (hosts[p.platform] && hosts[p.platform] !== host) throw new Error(`Build ${p.platform} on ${hosts[p.platform] === 'darwin' ? 'a Mac' : hosts[p.platform] === 'win32' ? 'Windows' : 'Linux'}. Cross-compilation is not configured.`);
   if (p.platform === 'web') {
@@ -58,7 +70,17 @@ export function buildPlan(root, profile, action, host = process.platform) {
   const mobile = ['android', 'ios'].includes(p.platform);
   if (!mobile && ['initialize', 'open'].includes(action)) throw new Error('Native project actions apply to Android and iOS');
   if (mobile && action === 'initialize') return [{ command: process.execPath, args: [cli, p.platform, 'init', '--ci', '--config', config], title: `Initialize ${p.platform} project` }];
-  if (mobile && action === 'open') return [{ command: process.execPath, args: [cli, p.platform, 'dev', '--open', '--config', config], title: `Open ${p.platform === 'ios' ? 'Xcode' : 'Android Studio'} (development session)` }];
+  if (mobile && action === 'open') {
+    const directory = path.join(root, 'src-tauri', 'gen', p.platform === 'ios' ? 'apple' : 'android');
+    if (p.platform === 'ios') {
+      let project;
+      try { project = readdirSync(directory).find(name => name.endsWith('.xcodeproj')); } catch { /* not initialized yet */ }
+      if (!project) throw new Error('Set up the iOS project first.');
+      return [{ command: 'open', args: [path.join(directory, project)], title: 'Open the iOS project in Xcode' }];
+    }
+    const opener = { darwin: 'open', win32: 'explorer.exe' }[host] ?? 'xdg-open';
+    return [{ command: opener, args: [directory], title: 'Open the Android project folder (then choose File › Open in Android Studio)' }];
+  }
   if (p.platform === 'ios') throw new Error('Initialize and open the Xcode project to build on a simulator. Automated iOS archives require signing configuration, which is not set up here.');
   if (p.platform === 'android' && p.mode === 'release') throw new Error('Android release signing is not configured. Use a development APK or open Android Studio for release setup.');
   const args = [cli, ...(mobile ? [p.platform] : []), action === 'run' && p.mode === 'development' ? 'dev' : 'build'];
@@ -77,7 +99,12 @@ async function version(command, args) {
     child.on('error', () => done(undefined)); child.on('close', code => done(code === 0 ? output.trim().split('\n')[0] : undefined));
   });
 }
+async function steamCheck(root) {
+  const sdk = await exists(path.join(root, 'vendor/steamworks/sdk/public/steam'));
+  return { checks: [{ name: 'Steamworks SDK', ok: sdk, detail: sdk ? 'Found in vendor/steamworks/sdk' : 'Download the SDK from the Steamworks site and place it in vendor/steamworks/sdk. Steps: docs/integrations/steam.md', blocking: true }], ready: sdk, note: 'Uploads to Steam are not automated yet.' };
+}
 export async function checkPlatform(root, platform, host = process.platform, action = 'build') {
+  if (platform === 'steam') return steamCheck(root);
   if (!platforms.includes(platform)) throw new Error('Unknown platform');
   const checks = [];
   const add = (name, ok, detail, blocking = true) => checks.push({ name, ok, detail, blocking });
@@ -85,7 +112,7 @@ export async function checkPlatform(root, platform, host = process.platform, act
   add('Build host', !hosts[platform] || hosts[platform] === host, `Current machine: ${hostNames[host] || host}${hosts[platform] ? ` · required: ${hostNames[hosts[platform]]}` : ''}`);
   for (const pkg of [...(action === 'dev' ? [] : ['typescript/bin/tsc']), 'vite/bin/vite.js', ...(platform === 'web' ? [] : ['@tauri-apps/cli/tauri.js'])]) {
     const name = { 'typescript/bin/tsc': 'TypeScript', 'vite/bin/vite.js': 'Vite', '@tauri-apps/cli/tauri.js': 'Tauri CLI' }[pkg];
-    try { tool(root, pkg); add(name, true, 'Installed'); } catch { add(name, false, 'Run npm install in this game repository'); }
+    try { tool(root, pkg); add(name, true, 'Installed'); } catch { add(name, false, 'Use Install dependencies to set this up'); }
   }
   if (platform !== 'web') {
     const rust = await version('rustc', ['--version']); add('Rust toolchain', !!rust, rust || 'Install Rust and the platform prerequisites');
@@ -121,7 +148,7 @@ export function cancelChild(child) {
 export async function runStep(step, root, job, log) {
   log(`\n› ${step.title}\n`);
   await new Promise((resolve, reject) => {
-    const child = spawn(step.command, step.args, { cwd: root, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, NO_COLOR: '1' } });
+    const child = spawn(step.command, step.args, { cwd: root, shell: step.shell === true, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, NO_COLOR: '1' } });
     job.child = child;
     child.stdout.on('data', data => log(data.toString())); child.stderr.on('data', data => log(data.toString()));
     child.on('error', reject); child.on('close', code => { job.child = undefined; code === 0 && !job.cancelled ? resolve() : reject(new Error(job.cancelled ? 'Cancelled' : `${step.title} failed (exit ${code})`)); });

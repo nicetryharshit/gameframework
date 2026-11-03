@@ -2,28 +2,84 @@
 import http from 'node:http';
 import { createReadStream } from 'node:fs';
 import { randomBytes } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { access, readFile, realpath, stat, writeFile, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, nativeProjectExists, runStep, cancelChild, collectArtifacts } from './builds.mjs';
 
 const assets = path.dirname(fileURLToPath(import.meta.url));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
 function inside(root, file) { const relative = path.relative(root, file); return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative)); }
+async function exists(file) { try { await access(file); return true; } catch { return false; } }
+/** Opens a URL in the user's default browser. Failure is harmless: the link is also shown in the page. */
+export function openExternal(url) {
+  const command = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
+  const child = spawn(command, [url], { shell: false, windowsHide: true, stdio: 'ignore' });
+  child.on('error', () => {}); child.unref();
+}
+/** Starts another game's dashboard on a free port and resolves with its address once it is listening. */
+function startGameDashboard(gameRoot, serverFile) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [serverFile, '--port', '0'], { cwd: gameRoot, shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    const timer = setTimeout(() => { child.kill(); reject(new Error('The game dashboard did not start.')); }, 10000);
+    const onData = data => {
+      output += data;
+      const match = output.match(/http:\/\/127\.0\.0\.1:\d+/);
+      if (match) { clearTimeout(timer); resolve({ url: match[0], child }); }
+    };
+    child.stdout.on('data', onData); child.stderr.on('data', onData);
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+  });
+}
+
 export async function startExportUI(root = process.cwd(), port = 4179) {
   root = await realpath(root); await projectInfo(root);
   const token = randomBytes(32).toString('hex');
   let active; let serial = 0; let address; let saving = false;
   const jobs = [];
+  const games = new Map();
   const log = (job, value) => { job.log = (job.log + value.replace(/\u001b\[[0-9;]*m/g, '')).slice(-200_000); };
+  const isFramework = async () => (await projectInfo(root)).kind === 'framework';
+
+  async function createGame(data) {
+    if (!(await isFramework())) throw new Error('New games can only be created from the framework folder.');
+    const slug = String(data.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!slug || slug.length > 40) throw new Error('Use letters or numbers for the game name.');
+    if (!['2d', '3d'].includes(data.renderer)) throw new Error('Choose 2D or 3D.');
+    const { createGame: generate } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    await generate(path.join(path.dirname(root), slug), data.renderer);
+    return { folder: slug };
+  }
+
+  async function openGame(data) {
+    if (!(await isFramework())) throw new Error('Games can only be opened from the framework folder.');
+    const folder = String(data.folder ?? '').trim();
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(folder)) throw new Error('Enter the name of a game folder next to the framework folder.');
+    const gameRoot = await realpath(path.join(path.dirname(root), folder)).catch(() => undefined);
+    if (!gameRoot || path.dirname(gameRoot) !== path.dirname(root)) throw new Error('No game folder with that name next to the framework folder.');
+    const serverFile = path.join(gameRoot, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs');
+    if (!(await exists(serverFile))) throw new Error('That folder is not a Game Workshop game.');
+    if (games.has(folder)) return { url: games.get(folder).url };
+    const game = await startGameDashboard(gameRoot, serverFile);
+    games.set(folder, game);
+    game.child.on('close', () => games.delete(folder));
+    openExternal(game.url);
+    return { url: game.url };
+  }
+
   async function execute(job) {
     try {
-      const check = await checkPlatform(root, job.profile.platform, process.platform, job.action);
-      job.checks = check;
-      if (!check.ready) throw new Error('Prerequisite checks failed. Review the platform checklist.');
+      // Installing and testing must run before setup is complete, so they skip the setup checks.
+      const setupJob = !['install', 'test'].includes(job.action);
+      if (setupJob) {
+        const check = await checkPlatform(root, job.profile.platform, process.platform, job.action);
+        job.checks = check;
+        if (!check.ready) throw new Error('Prerequisite checks failed. Review the platform checklist.');
+      }
       if (job.cancelled) throw new Error('Cancelled');
-      if (['ios', 'android'].includes(job.profile.platform)) {
+      if (setupJob && ['ios', 'android'].includes(job.profile.platform)) {
         const exists = await nativeProjectExists(root, job.profile.platform);
         if (job.action === 'initialize' && exists) throw new Error('Native project already exists. Open it instead; initialization will not overwrite your customizations.');
         if (job.action !== 'initialize' && !exists) throw new Error('Initialize the native project first.');
@@ -52,6 +108,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     } catch (error) { job.status = job.cancelled ? 'cancelled' : 'failed'; log(job, `\n${error.message}\n`); }
     finally { job.finished = new Date().toISOString(); active = undefined; }
   }
+
   const server = http.createServer(async (req, res) => {
     const json = (value, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); };
     try {
@@ -64,6 +121,8 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 16384) throw new Error('Request too large'); }
         const data = JSON.parse(body || '{}');
         if (url.pathname === '/api/check') return json(await checkPlatform(root, data.platform));
+        if (url.pathname === '/api/create') return json(await createGame(data));
+        if (url.pathname === '/api/open-game') return json(await openGame(data));
         if (url.pathname === '/api/profile') {
           if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
           saving = true; try { return json(await saveProfile(root, data)); } finally { saving = false; }
@@ -116,15 +175,24 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   address = { host: `127.0.0.1:${server.address().port}`, origin: `http://127.0.0.1:${server.address().port}` };
-  const close = async () => { if (active) { active.cancelled = true; cancelChild(active.child); } server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); };
+  const close = async () => {
+    if (active) { active.cancelled = true; cancelChild(active.child); }
+    for (const game of games.values()) game.child.kill();
+    server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  };
   return { url: address.origin, close };
 }
+
 if (process.argv[1] && await realpath(path.resolve(process.argv[1])).catch(() => '') === fileURLToPath(import.meta.url)) {
   const portArgument = process.argv.includes('--port') ? process.argv[process.argv.indexOf('--port') + 1] : process.argv.slice(2).find(value => /^\d+$/.test(value));
   const port = portArgument === undefined ? 4179 : Number(portArgument);
   try {
     const app = await startExportUI(process.cwd(), port);
-    console.log(`\nBuild & Export\n${app.url}\nProject: ${process.cwd()}\nOpen this local URL in your browser. Ctrl+C stops the dashboard and its active build.\n`);
+    console.log(`\nGame Workshop\n${app.url}\nProject: ${process.cwd()}\nKeep this window open while you use Game Workshop. Ctrl+C closes it.\n`);
+    if (process.argv.includes('--open')) openExternal(app.url);
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void app.close().then(() => process.exit()); });
-  } catch (error) { console.error(error.message.includes('EADDRINUSE') ? 'Port 4179 is in use. Try: npm run export:ui -- --port 4180' : error.message); process.exitCode = 1; }
+  } catch (error) {
+    if (error.code === 'EADDRINUSE' && process.argv.includes('--open')) { openExternal(`http://127.0.0.1:${port}`); console.log('Game Workshop is already running. Opened it in your browser.'); }
+    else { console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use. Close the other Game Workshop window, or run with --port <number>.` : error.message); process.exitCode = 1; }
+  }
 }
