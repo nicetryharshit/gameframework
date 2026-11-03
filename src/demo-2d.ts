@@ -1,21 +1,31 @@
-import { Graphics } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import { createPixiRenderer } from './renderers/pixi';
 import { startDemo } from './demo';
+import { flight } from './flappy';
 
-void startDemo('2D / PixiJS', async container => {
+void startDemo('PIXI / 2D', async container => {
   const app = await createPixiRenderer(container);
-  const player = new Graphics().circle(0, 0, 28).fill('#86e6bc');
-  app.stage.addChild(player);
-  let x = 150, y = 150;
+  const world = new Container(); app.stage.addChild(world);
+  world.addChild(new Graphics().rect(0, 0, 480, 720).fill('#dceee9'));
+  const clouds = new Graphics();
+  for (const [x, y] of [[70, 110], [340, 200], [240, 60]]) clouds.ellipse(x, y, 55, 15).fill('#f4faf4');
+  world.addChild(clouds);
+  const pipes = Array.from({ length: 3 }, () => {
+    const top = new Graphics().rect(0, -720, flight.pipeWidth, 720).fill('#4e8b78');
+    const bottom = new Graphics().rect(0, 0, flight.pipeWidth, 720).fill('#4e8b78');
+    world.addChild(top, bottom); return { top, bottom };
+  });
+  const bird = new Container();
+  bird.addChild(new Graphics().ellipse(0, 0, 19, 15).fill('#efb650').ellipse(-5, 4, 10, 7).fill('#dc9440').circle(8, -5, 3).fill('#203f39').poly([17, -1, 28, 4, 17, 8]).fill('#d7744e'));
+  world.addChild(bird);
+  world.addChild(new Graphics().rect(0, flight.floor, 480, 60).fill('#c3d5b3').rect(0, flight.floor, 480, 8).fill('#91b592'));
   return {
-    update(dt, input) {
-      x += (input.value('right') - input.value('left')) * 220 * dt;
-      y += (input.value('down') - input.value('up')) * 220 * dt;
-      x = Math.max(28, Math.min(container.clientWidth - 28, x));
-      y = Math.max(28, Math.min(container.clientHeight - 28, y));
-      player.position.set(x, y);
+    render(game) {
+      world.scale.set(app.screen.width / flight.width, app.screen.height / flight.height);
+      bird.position.set(flight.birdX, game.y); bird.rotation = Math.max(-0.4, Math.min(0.8, game.velocity / 650));
+      game.pipes.forEach((pipe, i) => { pipes[i].top.position.set(pipe.x, pipe.center - flight.gap / 2); pipes[i].bottom.position.set(pipe.x, pipe.center + flight.gap / 2); });
+      app.render();
     },
-    render() { app.render(); },
     dispose() { app.destroy(true, { children: true }); }
   };
 });

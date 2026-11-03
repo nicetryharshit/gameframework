@@ -15,6 +15,7 @@
     "src-tauri",
     "scripts/create-game.mjs",
     "src/demo.ts",
+    "src/flappy.ts",
     "src/demo.css",
     "src/demo-2d.ts",
     "src/demo-3d.ts",

@@ -20,7 +20,7 @@ export async function createGame(directory, renderer, framework) {
   const devDependencies = {};
   for (const key of ['vite', 'typescript', '@types/node', '@tauri-apps/cli', ...(renderer === '3d' ? ['@types/three'] : [])]) devDependencies[key] = own.devDependencies[key];
   await writeFile(path.join(target, 'package.json'), JSON.stringify({ name, version: '0.1.0', private: true, type: 'module', scripts, dependencies, devDependencies }, null, 2));
-  for (const file of ['demo.ts', 'demo.css', `demo-${renderer}.ts`]) {
+  for (const file of ['flappy.ts', 'demo.ts', 'demo.css', `demo-${renderer}.ts`]) {
     const content = (await readFile(path.join(source, 'src', file), 'utf8')).replaceAll("from './framework'", "from 'web-game-framework'").replaceAll("from './renderers/pixi'", "from 'web-game-framework/pixi'").replaceAll("from './renderers/three'", "from 'web-game-framework/three'");
     await writeFile(path.join(target, 'src', file), content);
   }
@@ -33,7 +33,7 @@ export async function createGame(directory, renderer, framework) {
   const config = JSON.parse(await readFile(configPath, 'utf8'));
   config.productName = name; config.identifier = `com.example.${name.replaceAll('-', '')}`; config.app.windows[0].title = name;
   await writeFile(configPath, JSON.stringify(config, null, 2));
-  await writeFile(path.join(target, 'README.md'), `# ${name}\n\nRun npm install, then npm run dev. Edit src/demo-${renderer}.ts for gameplay and src/demo.ts for flow. Export with npm run build:web or npm run build:desktop. Initialize mobile projects before building. Replace the placeholder bundle identifier and icons in src-tauri.\n\nFramework dependency: ${spec}\nFor a shared/CI build, replace a local file dependency with your committed Git URL and a pinned tag/commit.\n`);
+  await writeFile(path.join(target, 'README.md'), `# ${name}\n\nRun npm install, then npm run dev. Pocket Flight is a removable example game: Space, tap the sky, or controller A to flap. Includes main menu, score HUD, pause, game over, restart, and a saved personal best.\n\n## Replace the example\n\nAll example code lives in four files: src/flappy.ts (rules and tuning), src/demo.ts (menus and flow), src/demo-${renderer}.ts (renderer and entry point), and src/demo.css (styling). Replace these with your own game and update the script entry in index.html. No example logic lives in the framework. Keep package.json, vite.config.ts and src-tauri for builds.\n\nExport with npm run build:web or npm run build:desktop. Initialize mobile projects before building. Replace the placeholder bundle identifier and icons in src-tauri.\n\nFramework dependency: ${spec}\nFor a shared/CI build, replace a local file dependency with your committed Git URL and a pinned tag/commit.\n`);
   return target;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

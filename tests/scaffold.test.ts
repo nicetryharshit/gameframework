@@ -18,6 +18,8 @@ test('both starters contain the chosen renderer and exports, and refuse overwrit
       assert.equal(Object.keys(pkg.dependencies).length, 2);
       assert.ok(pkg.scripts['build:desktop']); assert.ok(pkg.scripts['build:web']);
       assert.match(await readFile(path.join(target, 'src', `demo-${renderer}.ts`), 'utf8'), /web-game-framework\/(pixi|three)/);
+      assert.match(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), /class FlappyGame/);
+      assert.match(await readFile(path.join(target, 'src', 'demo.ts'), 'utf8'), /states.register\('over'/);
       await assert.rejects(createGame(target, renderer), /already exists/);
     }
   } finally { await rm(temp, { recursive: true, force: true }); }

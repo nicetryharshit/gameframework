@@ -15,7 +15,9 @@ npm install
 npm run dev
 ```
 
-The generator refuses to overwrite an existing directory. It creates one renderer example, touch controls, the shared framework dependency, and Tauri export scripts. By default it uses a local file dependency on this checkout. For portable builds, pass a pinned Git package spec as the third argument: `npm run create:game -- ../my-game 3d "git+https://github.com/YOUR_NAME/webgameframework.git#COMMIT"`. It creates files only; installation and SDK setup remain explicit. Configure your game's placeholder app identifier and icons before mobile initialization. You can also run `create-web-game <directory> <2d|3d>` from an installed package.
+The generator refuses to overwrite an existing directory. It creates Pocket Flight, a tiny Flappy-style game with main menu, scoring HUD, saved best, pause, game over and restart. Tap the sky, press Space/Up, or controller A to flap; Escape/Start pauses. It includes the shared framework dependency and Tauri export scripts. Both 2D and 3D starters play the same game with different renderers. By default it uses a local file dependency on this checkout. For portable builds, pass a pinned Git package spec as the third argument: `npm run create:game -- ../my-game 3d "git+https://github.com/YOUR_NAME/webgameframework.git#COMMIT"`. It creates files only; installation and SDK setup remain explicit. Configure your game's placeholder app identifier and icons before mobile initialization. You can also run `create-web-game <directory> <2d|3d>` from an installed package.
+
+To remove the example, replace `src/flappy.ts` (rules), `src/demo.ts` (menus/flow), `src/demo-2d.ts` or `src/demo-3d.ts` (rendering), and `src/demo.css`, then point `index.html` at your own entry. The framework and export configuration are independent of these files. The sample uses simple shape art and requires no downloaded assets. Its portrait canvas keeps the same logical play area on every screen. Best scores are namespaced to `pocket-flight`; choose a game-specific namespace when adapting it.
 
 Keep this repository as one shared framework rather than maintaining separate branches. In a new **Vite + TypeScript** game, install this repository as a Git dependency, replacing the URL and tag with the actual repository and released commit/tag:
 
@@ -66,7 +68,7 @@ The example Tauri wrapper packages the current `index.html`, including its examp
 
 Install Rust and the platform SDKs described in the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). Windows needs MSVC C++ build tools and WebView2; Android needs Java, Android Studio/SDK/NDK and Rust Android targets; iOS needs macOS, Xcode, CocoaPods and Rust iOS targets. `npx tauri info` checks the local environment. The generated mobile projects in `src-tauri/gen/` are ignored and can be regenerated; if you customize them, manage those changes in your game repository rather than losing them on regeneration.
 
-Before shipping, change `productName`, `identifier`, window title, version and icons in `src-tauri/tauri.conf.json`. The sample identifier and Tauri icons are placeholders. Store signing, notarization, Steamworks, store uploads, and CI are not configured. An unsigned macOS app can be blocked by Gatekeeper; iOS devices and store distribution need signing. The samples use keyboard/gamepad controls, so mobile export does not yet imply touch-playable games.
+Before shipping, change `productName`, `identifier`, window title, version and icons in `src-tauri/tauri.conf.json`. The sample identifier and Tauri icons are placeholders. Store signing, notarization, Steamworks, store uploads, and native-build CI are not configured. An unsigned macOS app can be blocked by Gatekeeper; iOS devices and store distribution need signing. Pocket Flight supports keyboard, gamepad and touch, but mobile exports still need real-device testing.
 
 ### Adding exports to a separate game repository
 
