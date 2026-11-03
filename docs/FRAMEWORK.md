@@ -5,10 +5,10 @@ The package exports TypeScript source for Vite or another bundler that handles T
 ## Imports
 
 ```ts
-import { EventBus, GameLoop, Input, StateManager, UIController } from 'web-game-framework';
-import { createPixiRenderer } from 'web-game-framework/pixi'; // 2D
-// or: import { createThreeRenderer } from 'web-game-framework/three';
-// Optional desktop integration: 'web-game-framework/desktop'
+import { EventBus, GameLoop, Input, StateManager, UIController } from 'gameframework';
+import { createPixiRenderer } from 'gameframework/pixi'; // 2D
+// or: import { createThreeRenderer } from 'gameframework/three';
+// Optional desktop integration: 'gameframework/desktop'
 ```
 
 PixiJS, Three.js and the Tauri API are optional peer dependencies. The generator installs the selected renderer and Tauri API. For an existing Vite game, install the renderer/native packages you import yourself.
@@ -16,7 +16,7 @@ PixiJS, Three.js and the Tauri API are optional peer dependencies. The generator
 ## A small game loop
 
 ```ts
-import { EventBus, GameLoop, StateManager } from 'web-game-framework';
+import { EventBus, GameLoop, StateManager } from 'gameframework';
 
 const events = new EventBus<{ collected: number }>();
 const off = events.on('collected', amount => console.log(amount));

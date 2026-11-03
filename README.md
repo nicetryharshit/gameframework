@@ -1,4 +1,4 @@
-# Web Game Framework
+# gameframework
 
 A small TypeScript game starter for **PixiJS (2D)** or **Three.js (3D)**, with shared game systems and a local visual build dashboard. Develop in the browser, then package the same game for desktop or mobile with Tauri.
 
@@ -41,7 +41,7 @@ Keep the framework and game as separate projects:
 
 ```text
 Projects/
-  webgameframework/   ← shared framework checkout
+  gameframework/   ← shared framework checkout
   my-game/            ← your game's own repository
 ```
 

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Game Starter",
+  "productName": "gameframework",
   "version": "0.1.0",
-  "identifier": "com.example.webgamestarter",
+  "identifier": "com.example.gameframework",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Game Starter",
+        "title": "gameframework",
         "width": 1280,
         "height": 720,
         "resizable": true,

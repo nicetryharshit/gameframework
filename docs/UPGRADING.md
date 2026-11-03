@@ -11,7 +11,7 @@ The generator defaults to a `file:` dependency on the framework checkout. npm no
 In the game directory, install a specific framework commit or tag (substitute your actual URL):
 
 ```sh
-npm install "git+https://github.com/YOUR_NAME/webgameframework.git#COMMIT_OR_TAG"
+npm install "git+https://github.com/YOUR_NAME/gameframework.git#COMMIT_OR_TAG"
 npm run build:web
 ```
 
@@ -30,6 +30,7 @@ Desktop fullscreen/settings additions also require merging `src-tauri/tauri.conf
 For a starter or build-configuration improvement, generate a temporary project with the new framework, compare the relevant files, and apply only the changes your game needs. Preserve your game code and app identity. Delete the temporary comparison project when done.
 
 ## Current compatibility notes
+
 
 - `AudioMixer` is the recommended audio service. `AudioPlayer` remains exported for existing games but is deprecated. With the mixer, load a sound, call `unlock()` from a user gesture, and call `play()`. `play()` returns a voice with `stop()`, or `undefined` when suspended or at its voice limit; it does not return an HTML audio element.
 - `Input.pressed()` and `released()` now preserve keyboard/virtual transitions between frame polls. A quick tap can report both edges in the same frame while `held()` is false. Gamepad input is sampled each frame and cannot detect events that happen entirely between polls.

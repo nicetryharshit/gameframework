@@ -2,85 +2,85 @@
   "web-development": {
     "platform": "web",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "web-release": {
     "platform": "web",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "windows-development": {
     "platform": "windows",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "windows-release": {
     "platform": "windows",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "macos-development": {
     "platform": "macos",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "macos-release": {
     "platform": "macos",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "linux-development": {
     "platform": "linux",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "linux-release": {
     "platform": "linux",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "android-development": {
     "platform": "android",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "android-release": {
     "platform": "android",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "ios-development": {
     "platform": "ios",
     "mode": "development",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   },
   "ios-release": {
     "platform": "ios",
     "mode": "release",
-    "name": "Game Starter",
+    "name": "gameframework",
     "version": "0.1.0",
-    "identifier": "com.example.webgamestarter"
+    "identifier": "com.example.gameframework"
   }
 }

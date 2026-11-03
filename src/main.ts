@@ -3,7 +3,7 @@ import './style.css';
 
 type Events = { start: undefined; pause: undefined; resume: undefined; menu: undefined; score: number };
 const app = document.querySelector<HTMLDivElement>('#app')!;
-app.innerHTML = `<main><header><h1>Game Starter</h1><p>Try the canvas examples: <a href="./2d.html">2D with PixiJS</a> · <a href="./3d.html">3D with Three.js</a></p><p>Or try the shared game flow below.</p></header><div id="screens"></div></main>`;
+app.innerHTML = `<main><header><h1>gameframework</h1><p>Try the canvas examples: <a href="./2d.html">2D with PixiJS</a> · <a href="./3d.html">3D with Three.js</a></p><p>Or try the shared game flow below.</p></header><div id="screens"></div></main>`;
 const ui = new UIController(app.querySelector('#screens')!);
 const events = new EventBus<Events>();
 const saves = new SaveStore('game-starter');

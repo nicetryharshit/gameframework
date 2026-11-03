@@ -8,7 +8,7 @@ Fullscreen fills the current display. Windowed uses an ordinary decorated window
 
 The sample includes generated sound effects; it has no music track. The music bus is available for your game's music. Display and quit controls are hidden in web and mobile builds. Web/mobile retain audio, frame limit and render quality settings.
 
-`src/platform/desktop.ts` is an optional package entry, `web-game-framework/desktop`, using `@tauri-apps/api`. Native window permissions are scoped to desktop in `src-tauri/capabilities/desktop.json`. Each game owns its copied settings UI, native configuration and the `platform_kind` Rust command.
+`src/platform/desktop.ts` is an optional package entry, `gameframework/desktop`, using `@tauri-apps/api`. Native window permissions are scoped to desktop in `src-tauri/capabilities/desktop.json`. Each game owns its copied settings UI, native configuration and the `platform_kind` Rust command.
 
 For an existing game, copy or merge the new settings sample and native configuration into its repository, install `@tauri-apps/api`, and rebuild. Updating the framework dependency alone cannot change the game's copied fullscreen configuration, native permissions or menus.
 

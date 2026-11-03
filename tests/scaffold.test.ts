@@ -13,7 +13,7 @@ test('both starters contain the chosen renderer and exports, and refuse overwrit
       const target = path.join(temp, renderer);
       await createGame(target, renderer, 'git+https://example.com/framework.git#v1');
       const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
-      assert.equal(pkg.dependencies['web-game-framework'], 'git+https://example.com/framework.git#v1');
+      assert.equal(pkg.dependencies['gameframework'], 'git+https://example.com/framework.git#v1');
       assert.ok(pkg.dependencies[renderer === '2d' ? 'pixi.js' : 'three']);
       assert.equal(Object.keys(pkg.dependencies).length, 3);
       assert.ok(pkg.scripts['build:desktop']); assert.ok(pkg.scripts['build:web']);
@@ -24,7 +24,7 @@ test('both starters contain the chosen renderer and exports, and refuse overwrit
       assert.equal(native.app.windows[0].fullscreen, true); assert.equal(native.app.windows[0].decorations, false);
       const ignore = await readFile(path.join(target, '.gitignore'), 'utf8');
       assert.equal(ignore.split('\n').includes('src-tauri/gen/'), false);
-      assert.match(await readFile(path.join(target, 'src', `demo-${renderer}.ts`), 'utf8'), /web-game-framework\/(pixi|three)/);
+      assert.match(await readFile(path.join(target, 'src', `demo-${renderer}.ts`), 'utf8'), /gameframework\/(pixi|three)/);
       assert.match(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), /class FlappyGame/);
       assert.match(await readFile(path.join(target, 'src', 'demo.ts'), 'utf8'), /states.register\('over'/);
       await assert.rejects(access(path.join(target, '.github', 'workflows')), { code: 'ENOENT' });
