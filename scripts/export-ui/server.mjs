@@ -184,15 +184,22 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
 }
 
 if (process.argv[1] && await realpath(path.resolve(process.argv[1])).catch(() => '') === fileURLToPath(import.meta.url)) {
-  const portArgument = process.argv.includes('--port') ? process.argv[process.argv.indexOf('--port') + 1] : process.argv.slice(2).find(value => /^\d+$/.test(value));
-  const port = portArgument === undefined ? 4179 : Number(portArgument);
-  try {
-    const app = await startExportUI(process.cwd(), port);
+  const portIndex = process.argv.indexOf('--port');
+  const requestedPort = portIndex === -1 ? undefined : Number(process.argv[portIndex + 1]);
+  const port = requestedPort ?? 4179;
+  const showUrl = app => {
     console.log(`\nGame Workshop\n${app.url}\nProject: ${process.cwd()}\nKeep this window open while you use Game Workshop. Ctrl+C closes it.\n`);
     if (process.argv.includes('--open')) openExternal(app.url);
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { void app.close().then(() => process.exit()); });
+  };
+  try {
+    showUrl(await startExportUI(process.cwd(), port));
   } catch (error) {
-    if (error.code === 'EADDRINUSE' && process.argv.includes('--open')) { openExternal(`http://127.0.0.1:${port}`); console.log('Game Workshop is already running. Opened it in your browser.'); }
-    else { console.error(error.code === 'EADDRINUSE' ? `Port ${port} is in use. Close the other Game Workshop window, or run with --port <number>.` : error.message); process.exitCode = 1; }
+    if (error.code !== 'EADDRINUSE') { console.error(error.message); process.exitCode = 1; }
+    else if (requestedPort !== undefined) { console.error(`Port ${port} is in use. Close the other Game Workshop window, or choose another port.`); process.exitCode = 1; }
+    else {
+      // Another project's dashboard holds the default port. Use any free port so both can run at once.
+      showUrl(await startExportUI(process.cwd(), 0));
+    }
   }
 }
