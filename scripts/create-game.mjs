@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { access, chmod, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, cp, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -100,42 +100,43 @@ async function rendererStates(target) {
  * It does not run npm; the dashboard's Install dependencies does.
  */
 export async function addRenderer(directory, id) {
-  const target = path.resolve(directory);
-  await inspectGame(target);
-  const entry = (await readRegistry(source)).find(item => item.id === id);
-  if (!entry) throw new Error(`Unknown renderer: ${id}`);
-  const renderers = COMPONENTS.find(component => component.id === 'renderers');
-  const copied = await readRegistry(path.join(target, tools));
-  const items = [];
-  if (!copied.some(item => item.id === id) || !(await exists(path.join(target, tools, 'src/renderers', entry.entry)))) {
-    const versionFile = path.join(target, tools, 'VERSION.json');
-    const meta = JSON.parse(await readFile(versionFile, 'utf8'));
-    meta.components = { ...meta.components, renderers: (await frameworkVersion()).hashes.renderers };
-    items.push(...renderers.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
-    items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
-  }
-  const wiring = await planRendererWiring(target);
-  const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
-  const pkgFile = path.join(target, 'package.json');
-  const pkg = JSON.parse(await readFile(pkgFile, 'utf8'));
-  const added = [];
-  for (const [list, field] of [[entry.packages, 'dependencies'], [entry.devPackages ?? [], 'devDependencies']]) {
-    for (const name of list) {
-      const version = own.dependencies?.[name] ?? own.devDependencies?.[name];
-      if (!version) throw new Error(`The framework does not list a version for ${name}.`);
-      if (pkg.dependencies?.[name] || pkg.devDependencies?.[name]) continue;
-      (pkg[field] ??= {})[name] = version; added.push(name);
+  return lockedGame(directory, async target => {
+    await statusOf(target);
+    const entry = (await readRegistry(source)).find(item => item.id === id);
+    if (!entry) throw new Error(`Unknown renderer: ${id}`);
+    const renderers = COMPONENTS.find(component => component.id === 'renderers');
+    const copied = await readRegistry(path.join(target, tools));
+    const items = [];
+    if (!copied.some(item => item.id === id) || !(await exists(path.join(target, tools, 'src/renderers', entry.entry)))) {
+      const versionFile = path.join(target, tools, 'VERSION.json');
+      const meta = JSON.parse(await readFile(versionFile, 'utf8'));
+      meta.components = { ...meta.components, renderers: (await frameworkVersion()).hashes.renderers };
+      items.push(...renderers.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+      items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
     }
-  }
-  if (added.length) {
-    for (const field of ['dependencies', 'devDependencies']) if (pkg[field]) pkg[field] = Object.fromEntries(Object.entries(pkg[field]).sort(([a], [b]) => a.localeCompare(b)));
-    items.push({ path: 'package.json', text: JSON.stringify(pkg, null, 2) + '\n' });
-  }
-  if (items.length || wiring.edits.length) await replaceItems(target, [...items, ...wiring.edits]);
-  const notes = [...wiring.notes];
-  if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
-  notes.push(`Import it with: import { create${entry.id[0].toUpperCase()}${entry.id.slice(1)}Renderer } from '${aliasOf(entry)}'`);
-  return { renderer: id, added, notes };
+    const wiring = await planRendererWiring(target);
+    const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
+    const pkgFile = path.join(target, 'package.json');
+    const pkg = JSON.parse(await readFile(pkgFile, 'utf8'));
+    const added = [];
+    for (const [list, field] of [[entry.packages, 'dependencies'], [entry.devPackages ?? [], 'devDependencies']]) {
+      for (const name of list) {
+        const version = own.dependencies?.[name] ?? own.devDependencies?.[name];
+        if (!version) throw new Error(`The framework does not list a version for ${name}.`);
+        if (pkg.dependencies?.[name] || pkg.devDependencies?.[name]) continue;
+        (pkg[field] ??= {})[name] = version; added.push(name);
+      }
+    }
+    if (added.length) {
+      for (const field of ['dependencies', 'devDependencies']) if (pkg[field]) pkg[field] = Object.fromEntries(Object.entries(pkg[field]).sort(([a], [b]) => a.localeCompare(b)));
+      items.push({ path: 'package.json', text: JSON.stringify(pkg, null, 2) + '\n' });
+    }
+    if (items.length || wiring.edits.length) await replaceItems(target, [...items, ...wiring.edits]);
+    const notes = [...wiring.notes];
+    if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
+    notes.push(`Import it with: import { create${entry.id[0].toUpperCase()}${entry.id.slice(1)}Renderer } from '${aliasOf(entry)}'`);
+    return { renderer: id, added, notes };
+  });
 }
 
 /** The framework's own version and revision, shown next to each game's. */
@@ -151,8 +152,11 @@ export async function frameworkVersion() {
  * missing: the game has none yet (a component added after the game was created).
  */
 export async function inspectGame(directory) {
-  const target = path.resolve(directory);
-  await recoverInterruptedUpdate(target);
+  return lockedGame(directory, statusOf);
+}
+
+/** The game's status as it is on disk. Callers hold the game's lock. */
+async function statusOf(target) {
   const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => { throw new Error('That folder is not a Game Workshop game.'); }));
   const framework = await frameworkVersion();
   const mine = await hashesFor(path.join(target, tools));
@@ -192,10 +196,60 @@ export async function writeLaunchers(directory, serverPath) {
 
 const exists = file => access(file).then(() => true, () => false);
 
+/** Writes a file and flushes it to disk, so the file survives a power cut once this returns. */
+async function writeDurable(file, text) {
+  const handle = await open(file, 'w');
+  try { await handle.writeFile(text); await handle.sync(); }
+  finally { await handle.close(); }
+}
+
+/** Whether a process is still running. */
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code === 'EPERM'; }
+}
+
+const busy = () => new Error('This game is being updated. Try again when it finishes.');
+
 /**
- * Undoes an update, or finishes its cleanup, from the manifest and the staging folders. Safe to run again after it was
- * interrupted: a copy that reached its place goes back to staging, and an old copy that was set aside is put back.
- * Paths are relative to the game folder.
+ * Runs a task while holding the game's lock, so only one updater works on a game at a time, across processes.
+ * A lock whose process has stopped is taken over.
+ */
+async function withGameLock(target, task) {
+  const file = path.join(target, tools, '.lock');
+  let acquired = false;
+  for (let attempt = 0; attempt < 3 && !acquired; attempt++) {
+    try {
+      const handle = await open(file, 'wx');
+      try { await handle.writeFile(String(process.pid)); }
+      finally { await handle.close(); }
+      acquired = true;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const text = await readFile(file, 'utf8').catch(() => undefined);
+      if (text === undefined) continue; // released just now: try again
+      const owner = Number(text);
+      if (Number.isInteger(owner) && owner > 0 && processAlive(owner)) throw busy();
+      // An empty lock is still being written. Only a lock older than a minute is treated as abandoned.
+      if (!owner && Date.now() - (await stat(file).catch(() => ({ mtimeMs: 0 }))).mtimeMs < 60000) throw busy();
+      await rm(file, { force: true });
+    }
+  }
+  if (!acquired) throw busy();
+  try { return await task(); }
+  finally { await rm(file, { force: true }); }
+}
+
+/** Runs a task on a game while holding its lock, after finishing any interrupted update. */
+async function lockedGame(directory, task) {
+  const target = path.resolve(directory);
+  if (!(await exists(path.join(target, tools)))) throw new Error('That folder is not a Game Workshop game.');
+  return withGameLock(target, async () => { await recoverInterruptedUpdate(target); return task(target); });
+}
+
+/**
+ * Puts back each listed item: a new copy that was placed goes back to staging, and an old copy that was set aside is restored.
+ * Safe to run again after an interruption, because each step leaves the same state a repeat would expect.
  */
 async function restoreItems(target, work, paths) {
   for (const item of paths) {
@@ -213,23 +267,32 @@ async function restoreItems(target, work, paths) {
   }
 }
 
-/** Finishes or undoes an update that was interrupted, for example by a closed app or a power cut. */
+/** Removes the update's folders. The commit marker goes last, so an interrupted cleanup is finished rather than undone. */
+async function finishCleanup(work) {
+  for (const name of ['old', 'new', 'manifest.json']) await rm(path.join(work, name), { recursive: true, force: true });
+  await rm(path.join(work, 'commit'), { force: true });
+  await rm(work, { recursive: true, force: true });
+}
+
+/** Finishes or undoes an update that was interrupted. Runs only while the game is locked. */
 async function recoverInterruptedUpdate(target) {
   const work = path.join(target, tools, '.update');
   if (!(await exists(work))) return;
+  if (await exists(path.join(work, 'commit'))) return finishCleanup(work);
   const manifest = await readFile(path.join(work, 'manifest.json'), 'utf8').then(JSON.parse, () => undefined);
   if (manifest) await restoreItems(target, work, manifest);
   await rm(work, { recursive: true, force: true });
 }
 
 /**
- * Replaces files in a game, all or nothing. Paths are relative to the game folder. Each new copy is built in a staging
- * folder first. Then each old item is moved aside and its replacement moved in. If any step fails, everything is put back.
+ * Replaces files in a game, all or nothing. Paths are relative to the game folder. The caller holds the game's lock.
+ * Each new copy is built in a staging folder first. Then each old item is moved aside and its replacement moved in.
+ * The commit marker is written once every item is in place. If anything fails before that, everything is put back.
  * Each item is { path, from } to copy a file or folder, or { path, text } to write a file.
  */
 async function replaceItems(target, items, { onSwap } = {}) {
   const work = path.join(target, tools, '.update');
-  await recoverInterruptedUpdate(target);
+  const paths = items.map(item => item.path);
   await mkdir(path.join(work, 'new'), { recursive: true });
   try {
     for (const item of items) {
@@ -238,12 +301,11 @@ async function replaceItems(target, items, { onSwap } = {}) {
       if (item.text !== undefined) await writeFile(dest, item.text);
       else await cp(item.from, dest, { recursive: true });
     }
-    await writeFile(path.join(work, 'manifest.json'), JSON.stringify(items.map(item => item.path)));
+    await writeDurable(path.join(work, 'manifest.json'), JSON.stringify(paths));
   } catch (error) {
     await rm(work, { recursive: true, force: true });
     throw error;
   }
-  const paths = items.map(item => item.path);
   try {
     for (const item of items) {
       await onSwap?.(item.path);
@@ -255,13 +317,14 @@ async function replaceItems(target, items, { onSwap } = {}) {
       await mkdir(path.dirname(dest), { recursive: true });
       await rename(path.join(work, 'new', item.path), dest);
     }
+    await writeDurable(path.join(work, 'commit'), 'committed');
   } catch (error) {
     try { await restoreItems(target, work, paths); }
     catch (restoreError) { throw new Error(`The update failed and could not be undone. Your previous files are in ${path.join(work, 'old')}. ${restoreError.message}`); }
     await rm(work, { recursive: true, force: true });
     throw error;
   }
-  await rm(work, { recursive: true, force: true });
+  await finishCleanup(work);
 }
 
 /**
@@ -270,24 +333,25 @@ async function replaceItems(target, items, { onSwap } = {}) {
  * Renderer config edits are part of the same all-or-nothing replacement, so a failure undoes them too.
  */
 export async function updateGame(directory, only, { onSwap } = {}) {
-  const target = path.resolve(directory);
-  const before = await inspectGame(target);
-  const unknown = (only ?? []).filter(id => !COMPONENTS.some(component => component.id === id));
-  if (unknown.length) throw new Error(`Unknown part: ${unknown[0]}`);
-  const chosen = COMPONENTS.filter(component => !only || only.includes(component.id));
-  if (!chosen.length) throw new Error('Choose at least one part to update.');
-  const versionFile = path.join(target, tools, 'VERSION.json');
-  const meta = JSON.parse(await readFile(versionFile, 'utf8'));
-  const framework = await frameworkVersion();
-  const components = { ...meta.components };
-  for (const component of chosen) components[component.id] = framework.hashes[component.id];
-  const everything = chosen.length === COMPONENTS.length;
-  const text = JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
-  const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
-  // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
-  const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
-  await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
-  return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes: wiring.notes };
+  return lockedGame(directory, async target => {
+    const before = await statusOf(target);
+    const unknown = (only ?? []).filter(id => !COMPONENTS.some(component => component.id === id));
+    if (unknown.length) throw new Error(`Unknown part: ${unknown[0]}`);
+    const chosen = COMPONENTS.filter(component => !only || only.includes(component.id));
+    if (!chosen.length) throw new Error('Choose at least one part to update.');
+    const versionFile = path.join(target, tools, 'VERSION.json');
+    const meta = JSON.parse(await readFile(versionFile, 'utf8'));
+    const framework = await frameworkVersion();
+    const components = { ...meta.components };
+    for (const component of chosen) components[component.id] = framework.hashes[component.id];
+    const everything = chosen.length === COMPONENTS.length;
+    const text = JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
+    const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+    // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
+    const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
+    await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
+    return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes: wiring.notes };
+  });
 }
 
 export async function createGame(directory, renderer) {

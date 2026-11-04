@@ -199,6 +199,49 @@ test('an update interrupted while replacing the version file can still be read',
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
+test('a game being updated refuses other readers and updaters until it finishes', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-busy-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    let seen = '';
+    await updateGame(target, undefined, {
+      onSwap: async () => { seen = await inspectGame(target).then(() => 'read', (error: Error) => error.message); }
+    });
+    assert.match(seen, /being updated/);
+    assert.equal((await inspectGame(target)).outdated, false);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('a lock left by a process that stopped does not block updates', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-stale-lock-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    await writeFile(path.join(target, tools, '.lock'), '999999');
+    await updateGame(target);
+    assert.equal((await inspectGame(target)).outdated, false);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('a committed update that stopped during cleanup finishes without losing the installed files', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-committed-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    const root = path.join(target, tools);
+    const work = path.join(root, '.update');
+    // The new core is installed. Its old copy is already gone, and the commit marker is still there.
+    await writeFile(path.join(root, 'src/framework/index.ts'), '// installed core');
+    await mkdir(work, { recursive: true });
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify([`${tools}/src/framework`]));
+    await writeFile(path.join(work, 'commit'), 'committed');
+    await inspectGame(target);
+    assert.equal(await readFile(path.join(root, 'src/framework/index.ts'), 'utf8'), '// installed core');
+    await assert.rejects(access(work));
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
 test('adding a renderer maps it, adds only its packages, and is safe to repeat', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-renderer-'));
   try {
