@@ -9,7 +9,7 @@ The sidebar footer has four themes: **Ink** (warm dark), **Paper** (warm light),
 ## Framework folder
 
 - **Games** lists the games next to the framework folder. **Open** starts that game's dashboard in a new tab. A game with older tools is flagged **Update available**; **Update tools** lets you pick which parts to refresh (see [Updating a game](UPGRADING.md)).
-- **New game** creates a game next to the framework folder. Choose a folder name and 2D or 3D. Its dashboard opens in a new tab.
+- **New game** creates a game next to the framework folder. Choose a folder name and a renderer. The choices come from the framework's renderer registry (`src/renderers/registry.json`). Its dashboard opens in a new tab.
 - **Maintenance** (sidebar) runs `npm install` or the framework tests, with the output on the same page.
 
 ## Game folder

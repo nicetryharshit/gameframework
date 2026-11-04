@@ -107,7 +107,7 @@ tbody tr.click td:first-child{padding-left:8px}
 .form.wide{grid-template-columns:1fr auto auto;align-items:end}
 .form.wide [data-preview]{grid-column:1/-1;order:5}
 @media (max-width:700px){.form.wide{grid-template-columns:1fr}.app{grid-template-columns:200px 1fr}main{padding:24px 20px 60px}}
-label{font-size:12px;color:var(--muted);display:grid;gap:6px}
+label,.field{font-size:12px;color:var(--muted);display:grid;gap:6px}
 input[type=text],input:not([type]){height:var(--control);background:transparent;border:1px solid var(--line);border-radius:var(--radius);padding:0 12px;color:var(--text);font:14px var(--mono);outline:0;width:100%}
 input:focus{border-color:var(--accent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius);height:var(--control);padding:3px}

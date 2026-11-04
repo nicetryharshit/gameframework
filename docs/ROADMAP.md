@@ -41,7 +41,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 - [x] Generated games are self-contained. `create-game` copies the framework runtime, build dashboard, doctor and docs into `tools/gameframework/`, and the game imports them through aliases. A generated game never reads the framework checkout after creation. Covered by `tests/scaffold.test.ts`, which type-checks and builds a generated game.
 - [x] `npm run doctor` runs on the current folder, so it works in a generated game too.
 
-- [x] Framework folder: a **Games** list (open a game next to the framework), a **New game** form (name and 2D/3D), and **Maintenance** (install dependencies, run tests). Games open in their own dashboard in a new browser tab.
+- [x] Framework folder: a **Games** list (open a game next to the framework), a **New game** form (name and renderer), and **Maintenance** (install dependencies, run tests). Games open in their own dashboard in a new browser tab.
 - [x] Game dashboards: "Play in browser" starts the live dev server (overview header and Web page). "Install dependencies" appears first whenever dependencies are missing.
 - [x] Double-click launchers: `Game Workshop.command` (Mac), `Game Workshop.bat` (Windows) and `Game Workshop.sh` (Linux), in the framework folder and in every generated game. If Node.js is missing they open the download page.
 - [x] `tests/workshop.test.ts` checks the create and open rules and the install and test actions.
@@ -67,7 +67,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 
 ## P1: correctness and coverage
 
-6. **More renderers.** Done: renderer registry, a dependency-free `canvas` renderer, and one-step **Add renderer** for existing games (see `docs/RENDERERS.md`). Still open: a Phaser adapter (best 2D candidate) and a Babylon.js adapter (game-oriented 3D), each with a bundling check inside the Tauri shell; a Canvas option in **New game**.
+6. **More renderers.** Done: renderer registry, a dependency-free `canvas` renderer, and one-step **Add renderer** for existing games (see `docs/RENDERERS.md`). New game offers every registry renderer, including Canvas. Still open: a Phaser adapter (best 2D candidate) and a Babylon.js adapter (game-oriented 3D), each with a bundling check inside the Tauri shell.
 7. **Add renderer tests** for PixiJS and Three.js: mount, resize and dispose.
 8. **Add a native shell smoke test** for the Tauri shell, the `platform_kind` command and the desktop settings path.
 9. **Test on real devices**: touch, controller and fullscreen on an iPhone, an Android phone, and a Steam Deck or similar.

@@ -65,3 +65,50 @@ test('dashboard renders the platform table, opens a full page and starts a build
     Object.assign(globals, previous);
   }
 });
+
+test('New game offers each renderer from the registry and creates the chosen one', async () => {
+  const dir = path.join(process.cwd(), 'scripts', 'export-ui');
+  const html = (await readFile(path.join(dir, 'index.html'), 'utf8')).replace('__EXPORT_TOKEN__', 'test-token');
+  const window = new Window({ url: 'http://127.0.0.1:4179/' });
+  window.document.write(html);
+  const renderers = [
+    { id: 'pixi', label: 'PixiJS', kind: '2d', note: 'WebGL' },
+    { id: 'three', label: 'Three.js', kind: '3d', note: 'WebGL scenes' },
+    { id: 'canvas', label: 'Canvas 2D', kind: '2d', note: 'No dependencies' }
+  ];
+  const posts: { route: string; body: unknown }[] = [];
+  const fetchStub = async (url: string, options: { method?: string; body?: string } = {}) => {
+    const route = new URL(url, 'http://127.0.0.1:4179').pathname;
+    const body = options.body ? JSON.parse(options.body) : undefined;
+    if (options.method === 'POST') posts.push({ route, body });
+    const data = route === '/api/state' ? { project: { kind: 'framework', name: 'Framework', root: '/framework', hasTests: true, host: 'linux', profiles }, jobs: [] }
+      : route === '/api/games' ? { games: [], parent: '/', framework: { version: '0.2.0', revision: 'abc123' }, renderers }
+      : route === '/api/create' ? { folder: 'my-canvas-game' }
+      : route === '/api/open-game' ? { url: 'http://127.0.0.1:5000/' }
+      : {};
+    return { ok: true, status: 200, json: async () => data };
+  };
+  const globals = globalThis as Record<string, unknown>;
+  const previous = { document: globals.document, fetch: globals.fetch, setInterval: globals.setInterval };
+  Object.assign(globals, { document: window.document, fetch: fetchStub, setInterval: () => 0 });
+  try {
+    await import(pathToFileURL(path.join(dir, 'app.js')).href + '?framework');
+    const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+    await settle();
+    const doc = window.document as unknown as Document;
+    const choices = Array.from(doc.querySelectorAll('#create-form .seg button')) as HTMLButtonElement[];
+    assert.deepEqual(choices.map(choice => choice.textContent), ['PixiJS · 2D', 'Three.js · 3D', 'Canvas 2D · 2D']);
+    assert.equal(choices[0].classList.contains('on'), true, 'the first registry renderer is the default');
+
+    choices[2].click();
+    assert.equal(choices[2].classList.contains('on'), true);
+    assert.equal(choices[0].classList.contains('on'), false);
+    const form = doc.querySelector('#create-form') as HTMLFormElement;
+    (form.elements.namedItem('name') as HTMLInputElement).value = 'My Canvas Game';
+    form.dispatchEvent(new window.Event('submit', { cancelable: true }) as unknown as Event);
+    await settle();
+    assert.deepEqual(posts.find(post => post.route === '/api/create')?.body, { name: 'My Canvas Game', renderer: 'canvas' });
+  } finally {
+    Object.assign(globals, previous);
+  }
+});

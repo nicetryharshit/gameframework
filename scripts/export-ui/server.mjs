@@ -47,8 +47,8 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     if (!(await isFramework())) throw new Error('New games can only be created from the framework folder.');
     const slug = String(data.name ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     if (!slug || slug.length > 40) throw new Error('Use letters or numbers for the game name.');
-    if (!['2d', '3d'].includes(data.renderer)) throw new Error('Choose 2D or 3D.');
-    const { createGame: generate } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const { createGame: generate, readRegistry } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    if (!(await readRegistry(root)).some(item => item.id === data.renderer)) throw new Error('Choose a renderer.');
     await generate(path.join(path.dirname(root), slug), data.renderer);
     return { folder: slug };
   }
@@ -96,17 +96,18 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
   async function listGames() {
     if (!(await isFramework())) throw new Error('Games are listed from the framework folder.');
     const parent = path.dirname(root); const found = [];
-    const { inspectGame, frameworkVersion } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const { inspectGame, frameworkVersion, gameRenderer, readRegistry } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const renderers = await readRegistry(root);
     for (const entry of await readdir(parent, { withFileTypes: true }).catch(() => [])) {
       if (!entry.isDirectory() || !/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
       const folder = path.join(parent, entry.name);
       if (!(await exists(path.join(folder, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs')))) continue;
-      const pkg = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8').catch(() => '{}'));
       const update = await inspectGame(folder).catch(() => undefined);
-      found.push({ folder: entry.name, update, renderer: pkg.dependencies?.['three'] ? '3d' : '2d', running: games.has(entry.name) });
+      const renderer = await gameRenderer(folder);
+      found.push({ folder: entry.name, update, renderer, kind: renderers.find(item => item.id === renderer)?.kind ?? '2d', running: games.has(entry.name) });
     }
     const { version, revision } = await frameworkVersion();
-    return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision } };
+    return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision }, renderers: renderers.map(({ id, label, kind, note }) => ({ id, label, kind, note })) };
   }
 
   async function execute(job) {

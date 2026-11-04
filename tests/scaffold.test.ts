@@ -14,11 +14,12 @@ const tools = 'tools/gameframework';
 test('generated games carry their own framework tools and no link back to this checkout', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-scaffold-'));
   try {
-    for (const renderer of ['2d', '3d']) {
+    for (const renderer of ['pixi', 'three', 'canvas']) {
       const target = path.join(temp, renderer);
       await createGame(target, renderer);
       const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
-      assert.deepEqual(Object.keys(pkg.dependencies).sort(), ['@tauri-apps/api', renderer === '2d' ? 'pixi.js' : 'three'].sort());
+      const packages = ({ pixi: ['pixi.js'], three: ['three'], canvas: [] } as Record<string, string[]>)[renderer];
+      assert.deepEqual(Object.keys(pkg.dependencies).sort(), ['@tauri-apps/api', ...packages].sort());
       assert.equal(JSON.stringify(pkg).includes('file:'), false);
       assert.equal(pkg.scripts['export:ui'], `node ${tools}/scripts/export-ui/server.mjs`);
       assert.equal(pkg.scripts.doctor, `node ${tools}/scripts/doctor.mjs`);
@@ -30,7 +31,8 @@ test('generated games carry their own framework tools and no link back to this c
       assert.match(await readFile(path.join(target, 'vite.config.ts'), 'utf8'), /gameframework\/desktop/);
       const tsconfig = JSON.parse(await readFile(path.join(target, 'tsconfig.json'), 'utf8'));
       assert.equal(tsconfig.compilerOptions.paths['gameframework/pixi'][0], `./${tools}/src/renderers/pixi.ts`);
-      assert.match(await readFile(path.join(target, 'src', `demo-${renderer}.ts`), 'utf8'), /gameframework\/(pixi|three)/);
+      const demo = ({ pixi: 'demo-2d.ts', three: 'demo-3d.ts', canvas: 'demo-canvas.ts' } as Record<string, string>)[renderer];
+      assert.match(await readFile(path.join(target, 'src', demo), 'utf8'), /gameframework\/(pixi|three|canvas)/);
       assert.match(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), /class FlappyGame/);
       assert.match(await readFile(path.join(target, 'src', 'demo.ts'), 'utf8'), /states.register\('over'/);
       assert.match(await readFile(path.join(target, 'README.md'), 'utf8'), /delete the framework checkout/);
@@ -310,7 +312,7 @@ test('adding a renderer maps it, adds only its packages, and is safe to repeat',
 test('generated games type-check and build using only their copied tools', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-build-'));
   try {
-    for (const renderer of ['2d', '3d']) {
+    for (const renderer of ['pixi', 'three', 'canvas']) {
       const target = path.join(temp, renderer);
       await createGame(target, renderer);
       // Reuse this checkout's installed packages so the test does not download dependencies again.
@@ -321,5 +323,26 @@ test('generated games type-check and build using only their copied tools', async
       execFileSync(process.execPath, [path.join(target, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'], { cwd: target, stdio: 'pipe' });
       await access(path.join(target, 'dist', 'index.html'));
     }
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('a new game records its renderer, accepts the old 2d/3d names, and keeps the renderer on update', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-renderer-choice-'));
+  try {
+    const legacy = path.join(temp, 'legacy');
+    await createGame(legacy, '3d');
+    assert.equal(JSON.parse(await readFile(path.join(legacy, tools, 'VERSION.json'), 'utf8')).renderer, 'three');
+    assert.match(await readFile(path.join(legacy, 'index.html'), 'utf8'), /src\/demo-3d\.ts/);
+
+    const canvas = path.join(temp, 'canvas');
+    await createGame(canvas, 'canvas');
+    assert.equal(JSON.parse(await readFile(path.join(canvas, tools, 'VERSION.json'), 'utf8')).renderer, 'canvas');
+    assert.match(await readFile(path.join(canvas, 'index.html'), 'utf8'), /src\/demo-canvas\.ts/);
+    const frameworkPkg = JSON.parse(await readFile(path.join(checkout, 'package.json'), 'utf8'));
+    assert.deepEqual(JSON.parse(await readFile(path.join(canvas, 'package.json'), 'utf8')).dependencies, { '@tauri-apps/api': frameworkPkg.devDependencies['@tauri-apps/api'] });
+
+    await assert.rejects(createGame(path.join(temp, 'unknown'), 'sideways'), /Usage/);
+    await updateGame(canvas, ['framework']);
+    assert.equal(JSON.parse(await readFile(path.join(canvas, tools, 'VERSION.json'), 'utf8')).renderer, 'canvas');
   } finally { await rm(temp, { recursive: true, force: true }); }
 });

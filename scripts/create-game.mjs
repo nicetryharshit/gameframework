@@ -39,7 +39,7 @@ async function hashesFor(root) {
 }
 
 /** Renderers the framework offers, from src/renderers/registry.json under a framework or tools folder. */
-async function readRegistry(root) {
+export async function readRegistry(root) {
   const text = await readFile(path.join(root, 'src/renderers/registry.json'), 'utf8').catch(() => '{"renderers":[]}');
   return JSON.parse(text).renderers;
 }
@@ -353,7 +353,7 @@ export async function updateGame(directory, only, { onSwap } = {}) {
     const components = { ...meta.components };
     for (const component of chosen) components[component.id] = framework.hashes[component.id];
     const everything = chosen.length === COMPONENTS.length;
-    const text = JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
+    const text = JSON.stringify({ framework: meta.framework, renderer: meta.renderer, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
     const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
     // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
     const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
@@ -362,19 +362,36 @@ export async function updateGame(directory, only, { onSwap } = {}) {
   });
 }
 
-export async function createGame(directory, renderer) {
-  if (!directory || !['2d', '3d'].includes(renderer)) throw new Error('Usage: npm run create:game -- <new-directory> <2d|3d>');
+/** Older names for the first two renderers, so existing scripts and links keep working. */
+const legacyRenderers = { '2d': 'pixi', '3d': 'three' };
+
+/**
+ * The renderer id a game was made with. Games made before this was recorded are inferred from their packages.
+ */
+export async function gameRenderer(gameRoot) {
+  const meta = JSON.parse(await readFile(path.join(gameRoot, tools, 'VERSION.json'), 'utf8').catch(() => '{}'));
+  if (meta.renderer) return meta.renderer;
+  const pkg = JSON.parse(await readFile(path.join(gameRoot, 'package.json'), 'utf8').catch(() => '{}'));
+  const have = { ...pkg.dependencies, ...pkg.devDependencies };
+  return have['three'] ? 'three' : have['pixi.js'] ? 'pixi' : 'canvas';
+}
+
+/** Creates a game with any renderer in the framework's registry. `renderer` is a registry id (or 2d / 3d). */
+export async function createGame(directory, rendererArg) {
+  const registry = await readRegistry(source);
+  const renderer = Object.hasOwn(legacyRenderers, rendererArg) ? legacyRenderers[rendererArg] : rendererArg;
+  const entry = registry.find(item => item.id === renderer);
+  if (!directory || !entry) throw new Error(`Usage: npm run create:game -- <new-directory> <${registry.map(item => item.id).join('|')}>`);
   const target = path.resolve(directory);
   try { await access(target); throw new Error(`Destination already exists: ${target}`); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const name = path.basename(target).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'my-game';
   const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
-  const rendererPackage = renderer === '2d' ? 'pixi.js' : 'three';
 
   // Copy the framework into the game so it never depends on this checkout after generation.
   await mkdir(path.join(target, 'src'), { recursive: true });
   for (const item of frameworkFiles) await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
-  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes }, null, 2) + '\n');
+  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, renderer: entry.id, copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes }, null, 2) + '\n');
 
   const scripts = {};
   for (const [key, value] of Object.entries(own.scripts)) if (key.includes(':') && !['create:game', 'export:ui'].includes(key)) scripts[key] = value;
@@ -386,16 +403,16 @@ export async function createGame(directory, renderer) {
     'export:ui': `node ${tools}/scripts/export-ui/server.mjs`,
     workshop: `node ${tools}/scripts/export-ui/server.mjs --open`
   });
-  const dependencies = { [rendererPackage]: own.devDependencies[rendererPackage], '@tauri-apps/api': own.devDependencies['@tauri-apps/api'] };
-  const devDependencies = Object.fromEntries(['vite', 'typescript', '@types/node', '@tauri-apps/cli', ...(renderer === '3d' ? ['@types/three'] : [])].map(key => [key, own.devDependencies[key]]));
+  const dependencies = Object.fromEntries(['@tauri-apps/api', ...entry.packages].map(key => [key, own.devDependencies[key]]));
+  const devDependencies = Object.fromEntries(['vite', 'typescript', '@types/node', '@tauri-apps/cli', ...(entry.devPackages ?? [])].map(key => [key, own.devDependencies[key]]));
   await writeFile(path.join(target, 'package.json'), JSON.stringify({ name, version: '0.1.0', private: true, type: 'module', scripts, dependencies, devDependencies }, null, 2) + '\n');
 
   // Game code imports the framework by package-style names, which the aliases below resolve to the copied files.
-  const rewrite = text => text.replaceAll("from './framework'", "from 'gameframework'").replaceAll("from './renderers/pixi'", "from 'gameframework/pixi'").replaceAll("from './renderers/three'", "from 'gameframework/three'").replaceAll("from './platform/desktop'", "from 'gameframework/desktop'");
-  for (const file of [...demoFiles, `demo-${renderer}.ts`]) await writeFile(path.join(target, 'src', file), rewrite(await readFile(path.join(source, 'src', file), 'utf8')));
+  const rewrite = text => text.replaceAll("from './framework'", "from 'gameframework'").replace(/from '\.\/renderers\/([a-z0-9-]+)'/g, "from 'gameframework/$1'").replaceAll("from './platform/desktop'", "from 'gameframework/desktop'");
+  for (const file of [...demoFiles, entry.demo]) await writeFile(path.join(target, 'src', file), rewrite(await readFile(path.join(source, 'src', file), 'utf8')));
 
-  await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/demo-${renderer}.ts"></script></body></html>`);
-  const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries((await readRegistry(source)).map(entry => [`gameframework/${entry.id}`, `src/renderers/${entry.entry}`])), 'gameframework/desktop': 'src/platform/desktop.ts' };
+  await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/${entry.demo}"></script></body></html>`);
+  const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries(registry.map(item => [`gameframework/${item.id}`, `src/renderers/${item.entry}`])), 'gameframework/desktop': 'src/platform/desktop.ts' };
   await writeFile(path.join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, noEmit: true, skipLibCheck: true, types: ['vite/client', 'node'], lib: ['ES2022', 'DOM'], paths: Object.fromEntries(Object.entries(aliasPaths).map(([alias, file]) => [alias, [`./${tools}/${file}`]])) }, include: ['src'] }, null, 2) + '\n');
   const viteConfig = [
     "import { fileURLToPath } from 'node:url';",
@@ -440,7 +457,7 @@ Each platform has a row in Game Workshop's overview and its own page. The main b
 
 ## Your code
 
-Example files (Pocket Flight): \`src/flappy.ts\` (rules), \`src/demo.ts\` (flow), \`src/demo-settings.ts\` (settings), \`src/demo-${renderer}.ts\` (renderer and entry), \`src/demo.css\` (styling). Replace them with your own game and update \`index.html\`.
+Example files (Pocket Flight): \`src/flappy.ts\` (rules), \`src/demo.ts\` (flow), \`src/demo-settings.ts\` (settings), \`src/${entry.demo}\` (renderer and entry), \`src/demo.css\` (styling). Replace them with your own game and update \`index.html\`.
 
 Native projects in \`src-tauri/gen/\` belong to you. Keep them in Git.
 `);

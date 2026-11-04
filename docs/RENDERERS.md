@@ -10,6 +10,8 @@ A renderer is a small factory in `src/renderers/` that creates a drawing surface
 | `three` | 3D | `three`, `@types/three` | 3D scenes |
 | `canvas` | 2D | none | Small games, tools, or anything where a dependency is not worth it |
 
+New games can pick any renderer in the table. Each game's example scene comes from its registry entry (`demo`).
+
 ```ts
 import { createCanvasRenderer } from 'gameframework/canvas';
 const view = createCanvasRenderer(document.getElementById('app')!, { background: '#101820' });
@@ -31,9 +33,10 @@ It does not run npm. Open the game's dashboard and use **Install dependencies**.
 ## Adding a renderer to the framework
 
 1. Add `src/renderers/<id>.ts` exporting `create<Id>Renderer(container, ...)`.
-2. Add an entry to `src/renderers/registry.json` (`id`, `label`, `kind`, `entry`, `note`, `packages`, and `devPackages` for type packages).
-3. Add the packages to the framework's `devDependencies` so the version is pinned in one place, and an export in `package.json` (`"./<id>": "./src/renderers/<id>.ts"`).
-4. Add a test. New games map every registry entry automatically.
+2. Add a demo scene `src/demo-<id>.ts` that imports the renderer from `./renderers/<id>` and add it to `package.json` `files`.
+3. Add an entry to `src/renderers/registry.json` (`id`, `label`, `kind`, `entry`, `demo`, `note`, `packages`, and `devPackages` for type packages). New games and the New game form pick it up automatically.
+4. Add the packages to the framework's `devDependencies` so the version is pinned in one place, and an export in `package.json` (`"./<id>": "./src/renderers/<id>.ts"`).
+5. Add a test. New games map every registry entry automatically.
 
 ## Alternatives worth considering
 

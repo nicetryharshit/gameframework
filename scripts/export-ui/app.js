@@ -174,22 +174,31 @@ function renderSide() {
 }
 
 /* ---------- framework home ---------- */
-const createForm = (() => {
+/** The New game form, with one renderer choice for each entry in the framework's registry. */
+function makeCreateForm() {
+  const choices = games?.renderers ?? [];
   const form = el('form', 'form wide');
   form.id = 'create-form';
   form.innerHTML = `<label>Folder name<input name="name" required maxlength="40" value="my-game" autocomplete="off"></label>
-    <label>Renderer<span class="seg" role="group" aria-label="Renderer"><button type="button" data-r="2d" class="on">Pixi · 2D</button><button type="button" data-r="3d">Three · 3D</button></span></label>
+    <div class="field"><span>Renderer</span><span class="seg" role="group" aria-label="Renderer"></span></div>
     <span class="mono muted small" data-preview></span>
     <button type="submit" class="btn primary">Create game</button>`;
-  form.dataset.renderer = '2d';
+  const group = form.querySelector('.seg');
+  choices.forEach((item, index) => {
+    const choice = el('button', index === 0 ? 'on' : '', `${item.label} · ${item.kind.toUpperCase()}`);
+    choice.type = 'button';
+    choice.dataset.r = item.id;
+    group.append(choice);
+  });
+  form.dataset.renderer = choices[0]?.id ?? '';
   const sync = () => {
     const slug = form.elements.name.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     form.querySelector('[data-preview]').textContent = slug ? `Creates ../${slug}` : 'Use letters or numbers';
   };
   form.elements.name.addEventListener('input', sync); sync();
-  for (const choice of form.querySelectorAll('.seg button')) choice.addEventListener('click', () => {
+  for (const choice of group.querySelectorAll('button')) choice.addEventListener('click', () => {
     form.dataset.renderer = choice.dataset.r;
-    for (const other of form.querySelectorAll('.seg button')) other.classList.toggle('on', other === choice);
+    for (const other of group.querySelectorAll('button')) other.classList.toggle('on', other === choice);
   });
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -200,7 +209,7 @@ const createForm = (() => {
     } catch (error) { say(error.message); }
   });
   return form;
-})();
+}
 
 async function openGame(folder) {
   try { const { url } = await api('open-game', { folder }); created = { folder, url, opened: true }; await loadGames(); draw(true); }
@@ -293,7 +302,8 @@ function renderHome() {
       const row = el('tr', 'click');
       const info = game.update;
       const name = el('td'); name.append(el('b', '', game.folder), el('div', 'muted mono small', `../${game.folder}`));
-      const kind = el('td', 'mono', game.renderer === '3d' ? 'three · 3D' : 'pixi · 2D');
+      const choice = games.renderers?.find(item => item.id === game.renderer);
+      const kind = el('td', 'mono', choice ? `${choice.label} · ${choice.kind.toUpperCase()}` : game.renderer);
       const toolsCell = el('td');
       const st = el('span', 'st'); st.append(dot(!info ? '' : info.outdated ? 'warn' : 'ok'), !info ? 'Unknown' : info.outdated ? 'Update available' : 'Up to date');
       toolsCell.append(st, el('div', 'muted mono small', info ? `${info.version} · ${info.revision}` : ''));
@@ -306,7 +316,7 @@ function renderHome() {
     table.append(body); list.append(table);
   }
 
-  const make = el('div', 'card'); make.append(el('h2', '', 'New game'), createForm);
+  const make = el('div', 'card'); make.append(el('h2', '', 'New game'), makeCreateForm());
   const grid = el('div', 'stack'); grid.append(list, make);
   view.append(grid);
   return view;

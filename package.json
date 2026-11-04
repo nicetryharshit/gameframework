@@ -38,6 +38,7 @@
     "src/demo.css",
     "src/demo-2d.ts",
     "src/demo-3d.ts",
+    "src/demo-canvas.ts",
     "README.md"
   ],
   "peerDependencies": {

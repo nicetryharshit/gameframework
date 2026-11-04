@@ -1,7 +1,7 @@
 {
   "renderers": [
-    { "id": "pixi", "label": "PixiJS", "kind": "2d", "entry": "pixi.ts", "note": "WebGL/WebGPU, sprites and filters", "packages": ["pixi.js"] },
-    { "id": "three", "label": "Three.js", "kind": "3d", "entry": "three.ts", "note": "WebGL scenes", "packages": ["three"], "devPackages": ["@types/three"] },
-    { "id": "canvas", "label": "Canvas 2D", "kind": "2d", "entry": "canvas.ts", "note": "No dependencies. Smallest bundle, simplest drawing.", "packages": [] }
+    { "id": "pixi", "label": "PixiJS", "kind": "2d", "entry": "pixi.ts", "demo": "demo-2d.ts", "note": "WebGL/WebGPU, sprites and filters", "packages": ["pixi.js"] },
+    { "id": "three", "label": "Three.js", "kind": "3d", "entry": "three.ts", "demo": "demo-3d.ts", "note": "WebGL scenes", "packages": ["three"], "devPackages": ["@types/three"] },
+    { "id": "canvas", "label": "Canvas 2D", "kind": "2d", "entry": "canvas.ts", "demo": "demo-canvas.ts", "note": "No dependencies. Smallest bundle, simplest drawing.", "packages": [] }
   ]
 }

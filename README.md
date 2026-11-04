@@ -17,7 +17,7 @@ You need one thing installed first: **[Node.js 22 or newer](https://nodejs.org/)
 
 2. **Install and test the framework (optional but recommended).** Open **Maintenance** in the sidebar, click **Install dependencies**, then **Run tests**. All tests should pass.
 
-3. **Create a game.** In **Games**, use the **New game** form: enter a name such as `testgame` and choose 2D or 3D, then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
+3. **Create a game.** In **Games**, use the **New game** form: enter a name such as `testgame` and choose a renderer (PixiJS, Three.js or Canvas 2D), then click **Create game**. Game Workshop creates the game in a folder next to this one and opens its dashboard in a new tab.
 
 Your game is now a separate project. It contains its own copy of the framework, so you can move or delete this folder afterwards.
 
@@ -81,7 +81,7 @@ Everything above can also be done from a terminal, which is useful for scripts o
 | Install dependencies | `npm install` |
 | Run the framework tests | `npm test` |
 | Check your setup | `npm run doctor` |
-| Create a game | `npm run create:game -- ../testgame 2d` (or `3d`) |
+| Create a game | `npm run create:game -- ../testgame canvas` (or `pixi`, `three`; `2d` and `3d` still mean pixi and three) |
 | Open Game Workshop | `npm run workshop` (or `npm run export:ui` without opening the browser) |
 | Play in a browser | `npm run dev` |
 | Build for the web | `npm run build` |

@@ -45,9 +45,9 @@ test('the framework folder creates and opens games, other folders cannot, and in
     await writeFile(path.join(game, 'tools', 'gameframework', 'VERSION.json'), JSON.stringify({ version: '0.0.1' }));
     await writeFile(path.join(game, 'package.json'), JSON.stringify({ name: 'sample-game', dependencies: { three: '1.0.0' } }));
     await mkdir(path.join(framework, 'scripts'), { recursive: true });
-    await writeFile(path.join(framework, 'scripts', 'create-game.mjs'), "export const frameworkVersion = async () => ({ version: '9.9.9', revision: 'abc123' });\nexport const inspectGame = async () => ({ version: '0.0.1', revision: 'old000', outdated: true, components: [] });\n");
+    await writeFile(path.join(framework, 'scripts', 'create-game.mjs'), "export const frameworkVersion = async () => ({ version: '9.9.9', revision: 'abc123' });\nexport const inspectGame = async () => ({ version: '0.0.1', revision: 'old000', outdated: true, components: [] });\nexport const gameRenderer = async () => 'three';\nexport const readRegistry = async () => [{ id: 'three', label: 'Three.js', kind: '3d', note: 'WebGL scenes' }];\n");
     const listed = await (await fetch(`${base}/api/games`, { headers: { 'X-Export-Token': token } })).json();
-    assert.deepEqual(listed.games.map((game: { folder: string; renderer: string; update: { outdated: boolean } }) => [game.folder, game.renderer, game.update.outdated]), [['sample-game', '3d', true]]);
+    assert.deepEqual(listed.games.map((game: { folder: string; renderer: string; update: { outdated: boolean } }) => [game.folder, game.renderer, game.update.outdated]), [['sample-game', 'three', true]]);
     assert.deepEqual(listed.framework, { version: '9.9.9', revision: 'abc123' });
   } finally { await app?.close(); await rm(root, { recursive: true, force: true }); }
 });
