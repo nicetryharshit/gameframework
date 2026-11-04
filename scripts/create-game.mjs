@@ -46,20 +46,21 @@ async function readRegistry(root) {
 const aliasOf = entry => `gameframework/${entry.id}`;
 
 /**
- * Maps every renderer in the game's copy of the registry in tsconfig.json and vite.config.ts.
- * An alias costs nothing until a file imports it. Returns notes for anything it could not edit.
+ * Config edits that map each renderer in the framework's registry. Nothing is written here: the caller applies the edits
+ * with the update, so a failure undoes them. Malformed JSON throws before anything in the game changes.
  */
-async function wireRenderers(target) {
+async function planRendererWiring(target) {
   const notes = [];
-  const registry = await readRegistry(path.join(target, tools));
+  const edits = [];
+  const registry = await readRegistry(source);
   const tsFile = path.join(target, 'tsconfig.json');
-  const tsconfig = JSON.parse(await readFile(tsFile, 'utf8').catch(() => 'null') ?? 'null');
+  const tsconfig = JSON.parse(await readFile(tsFile, 'utf8').catch(() => 'null'));
   if (!tsconfig?.compilerOptions) notes.push('tsconfig.json was not found or has no compilerOptions. Add the renderer paths by hand.');
   else {
     const paths = tsconfig.compilerOptions.paths ??= {};
     let changed = false;
     for (const entry of registry) if (!paths[aliasOf(entry)]) { paths[aliasOf(entry)] = [`./${tools}/src/renderers/${entry.entry}`]; changed = true; }
-    if (changed) await writeFile(tsFile, JSON.stringify(tsconfig, null, 2) + '\n');
+    if (changed) edits.push({ path: 'tsconfig.json', text: JSON.stringify(tsconfig, null, 2) + '\n' });
   }
   const viteFile = path.join(target, 'vite.config.ts');
   let vite = await readFile(viteFile, 'utf8').catch(() => undefined);
@@ -71,10 +72,10 @@ async function wireRenderers(target) {
     else {
       const lines = missing.map(entry => `${marker[1]}  { find: '${aliasOf(entry)}', replacement: framework('src/renderers/${entry.entry}') },`).join('\n');
       vite = vite.replace(marker[0], `${marker[0]}\n${lines}`);
-      await writeFile(viteFile, vite);
+      edits.push({ path: 'vite.config.ts', text: vite });
     }
   }
-  return notes;
+  return { notes, edits };
 }
 
 /** Each framework renderer with this game's state: ready (mapped, packages present) or available. */
@@ -95,7 +96,8 @@ async function rendererStates(target) {
 
 /**
  * Adds a renderer to an existing game in one step: copies the framework's renderers, maps the alias,
- * and adds its packages to package.json. It does not run npm; the dashboard's Install dependencies does.
+ * and adds its packages to package.json. All of it is applied together, so a failure leaves the game as it was.
+ * It does not run npm; the dashboard's Install dependencies does.
  */
 export async function addRenderer(directory, id) {
   const target = path.resolve(directory);
@@ -104,14 +106,15 @@ export async function addRenderer(directory, id) {
   if (!entry) throw new Error(`Unknown renderer: ${id}`);
   const renderers = COMPONENTS.find(component => component.id === 'renderers');
   const copied = await readRegistry(path.join(target, tools));
-  if (!copied.some(item => item.id === id) || !(await access(path.join(target, tools, 'src/renderers', entry.entry)).then(() => true, () => false))) {
+  const items = [];
+  if (!copied.some(item => item.id === id) || !(await exists(path.join(target, tools, 'src/renderers', entry.entry)))) {
     const versionFile = path.join(target, tools, 'VERSION.json');
     const meta = JSON.parse(await readFile(versionFile, 'utf8'));
     meta.components = { ...meta.components, renderers: (await frameworkVersion()).hashes.renderers };
-    const copies = renderers.files.map(item => ({ path: item, from: path.join(source, item) }));
-    await replaceItems(target, [...copies, { path: 'VERSION.json', text: JSON.stringify(meta, null, 2) + '\n' }]);
+    items.push(...renderers.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+    items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
   }
-  const notes = await wireRenderers(target);
+  const wiring = await planRendererWiring(target);
   const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
   const pkgFile = path.join(target, 'package.json');
   const pkg = JSON.parse(await readFile(pkgFile, 'utf8'));
@@ -126,9 +129,11 @@ export async function addRenderer(directory, id) {
   }
   if (added.length) {
     for (const field of ['dependencies', 'devDependencies']) if (pkg[field]) pkg[field] = Object.fromEntries(Object.entries(pkg[field]).sort(([a], [b]) => a.localeCompare(b)));
-    await writeFile(pkgFile, JSON.stringify(pkg, null, 2) + '\n');
-    notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
+    items.push({ path: 'package.json', text: JSON.stringify(pkg, null, 2) + '\n' });
   }
+  if (items.length || wiring.edits.length) await replaceItems(target, [...items, ...wiring.edits]);
+  const notes = [...wiring.notes];
+  if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
   notes.push(`Import it with: import { create${entry.id[0].toUpperCase()}${entry.id.slice(1)}Renderer } from '${aliasOf(entry)}'`);
   return { renderer: id, added, notes };
 }
@@ -147,6 +152,7 @@ export async function frameworkVersion() {
  */
 export async function inspectGame(directory) {
   const target = path.resolve(directory);
+  await recoverInterruptedUpdate(target);
   const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => { throw new Error('That folder is not a Game Workshop game.'); }));
   const framework = await frameworkVersion();
   const mine = await hashesFor(path.join(target, tools));
@@ -187,39 +193,43 @@ export async function writeLaunchers(directory, serverPath) {
 const exists = file => access(file).then(() => true, () => false);
 
 /**
- * Puts back each listed item: a new copy that was placed is removed, and an old copy that was moved aside is restored.
- * An item that was never reached still has its staged copy and is left as it was.
+ * Undoes an update, or finishes its cleanup, from the manifest and the staging folders. Safe to run again after it was
+ * interrupted: a copy that reached its place goes back to staging, and an old copy that was set aside is put back.
+ * Paths are relative to the game folder.
  */
-async function restoreItems(root, work, paths) {
+async function restoreItems(target, work, paths) {
   for (const item of paths) {
-    const dest = path.join(root, item);
-    if (!(await exists(path.join(work, 'new', item)))) await rm(dest, { recursive: true, force: true });
-    if (await exists(path.join(work, 'old', item))) {
+    const dest = path.join(target, item);
+    const staged = path.join(work, 'new', item);
+    const old = path.join(work, 'old', item);
+    if (!(await exists(staged)) && (await exists(dest))) {
+      await mkdir(path.dirname(staged), { recursive: true });
+      await rename(dest, staged);
+    }
+    if (await exists(old)) {
       await mkdir(path.dirname(dest), { recursive: true });
-      await rename(path.join(work, 'old', item), dest);
+      await rename(old, dest);
     }
   }
 }
 
-/** Finishes the cleanup of an update that was interrupted (for example, the app was closed mid-update). */
-async function recoverInterruptedUpdate(root) {
-  const work = path.join(root, '.update');
+/** Finishes or undoes an update that was interrupted, for example by a closed app or a power cut. */
+async function recoverInterruptedUpdate(target) {
+  const work = path.join(target, tools, '.update');
   if (!(await exists(work))) return;
   const manifest = await readFile(path.join(work, 'manifest.json'), 'utf8').then(JSON.parse, () => undefined);
-  if (manifest) await restoreItems(root, work, manifest);
+  if (manifest) await restoreItems(target, work, manifest);
   await rm(work, { recursive: true, force: true });
 }
 
 /**
- * Replaces framework files in a game, all or nothing. Each new copy is built in a staging folder first.
- * Then each old item is moved aside and its replacement moved in. If any step fails, every item is put back as it was.
- * Old copies are deleted only after everything is in place.
+ * Replaces files in a game, all or nothing. Paths are relative to the game folder. Each new copy is built in a staging
+ * folder first. Then each old item is moved aside and its replacement moved in. If any step fails, everything is put back.
  * Each item is { path, from } to copy a file or folder, or { path, text } to write a file.
  */
 async function replaceItems(target, items, { onSwap } = {}) {
-  const root = path.join(target, tools);
-  const work = path.join(root, '.update');
-  await recoverInterruptedUpdate(root);
+  const work = path.join(target, tools, '.update');
+  await recoverInterruptedUpdate(target);
   await mkdir(path.join(work, 'new'), { recursive: true });
   try {
     for (const item of items) {
@@ -237,7 +247,7 @@ async function replaceItems(target, items, { onSwap } = {}) {
   try {
     for (const item of items) {
       await onSwap?.(item.path);
-      const dest = path.join(root, item.path);
+      const dest = path.join(target, item.path);
       if (await exists(dest)) {
         await mkdir(path.dirname(path.join(work, 'old', item.path)), { recursive: true });
         await rename(dest, path.join(work, 'old', item.path));
@@ -246,7 +256,7 @@ async function replaceItems(target, items, { onSwap } = {}) {
       await rename(path.join(work, 'new', item.path), dest);
     }
   } catch (error) {
-    try { await restoreItems(root, work, paths); }
+    try { await restoreItems(target, work, paths); }
     catch (restoreError) { throw new Error(`The update failed and could not be undone. Your previous files are in ${path.join(work, 'old')}. ${restoreError.message}`); }
     await rm(work, { recursive: true, force: true });
     throw error;
@@ -257,6 +267,7 @@ async function replaceItems(target, items, { onSwap } = {}) {
 /**
  * Copies the chosen components (default: all) from this framework into a game.
  * Game code, src-tauri, profiles and Builds are not touched. Returns what changed and anything the game must wire up by hand.
+ * Renderer config edits are part of the same all-or-nothing replacement, so a failure undoes them too.
  */
 export async function updateGame(directory, only, { onSwap } = {}) {
   const target = path.resolve(directory);
@@ -272,22 +283,11 @@ export async function updateGame(directory, only, { onSwap } = {}) {
   for (const component of chosen) components[component.id] = framework.hashes[component.id];
   const everything = chosen.length === COMPONENTS.length;
   const text = JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
-  const copies = chosen.flatMap(component => component.files.map(item => ({ path: item, from: path.join(source, item) })));
-  await replaceItems(target, [...copies, { path: 'VERSION.json', text }], { onSwap });
-
-  // New renderers arrive with the renderers part. Map their aliases so they are ready to import.
-  // Config edits happen after the swap. If they fail, the game's config goes back to how it was.
-  let notes = [];
-  if (chosen.some(component => component.id === 'renderers')) {
-    const configFiles = ['tsconfig.json', 'vite.config.ts'].map(name => path.join(target, name));
-    const originals = await Promise.all(configFiles.map(file => readFile(file, 'utf8').catch(() => undefined)));
-    try { notes = await wireRenderers(target); }
-    catch (error) {
-      await Promise.all(configFiles.map((file, index) => originals[index] === undefined ? undefined : writeFile(file, originals[index])));
-      throw error;
-    }
-  }
-  return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes };
+  const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+  // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
+  const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
+  await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
+  return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes: wiring.notes };
 }
 
 export async function createGame(directory, renderer) {

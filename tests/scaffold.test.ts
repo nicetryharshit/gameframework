@@ -102,7 +102,7 @@ test('a failed update puts every part back exactly as it was', async () => {
     const before = await snapshot(path.join(target, tools));
     // Fail on the last part, after the earlier parts have already been swapped in.
     await assert.rejects(
-      updateGame(target, undefined, { onSwap: (item: string) => { if (item === 'docs') throw new Error('disk full'); } }),
+      updateGame(target, undefined, { onSwap: (item: string) => { if (item === `${tools}/docs`) throw new Error('disk full'); } }),
       /disk full/
     );
     assert.deepEqual(await snapshot(path.join(target, tools)), before);
@@ -124,15 +124,15 @@ test('an update interrupted partway is undone on the next run', async () => {
     const before = await snapshot(root);
     // Simulate the app closing after the core was swapped in but before the docs were.
     const work = path.join(root, '.update');
-    await mkdir(path.join(work, 'new/src'), { recursive: true });
-    await mkdir(path.join(work, 'new/docs'), { recursive: true });
-    await mkdir(path.join(work, 'old/src'), { recursive: true });
-    await writeFile(path.join(work, 'new/docs/FRAMEWORK.md'), '// new docs');
-    await writeFile(path.join(work, 'manifest.json'), JSON.stringify(['src/framework', 'docs']));
-    await rename(path.join(root, 'src/framework'), path.join(work, 'old/src/framework'));
-    await mkdir(path.join(work, 'new/src/framework'), { recursive: true });
-    await writeFile(path.join(work, 'new/src/framework/index.ts'), '// half-copied core');
-    await rename(path.join(work, 'new/src/framework'), path.join(root, 'src/framework'));
+    await mkdir(path.join(work, 'new', tools, 'src'), { recursive: true });
+    await mkdir(path.join(work, 'new', tools, 'docs'), { recursive: true });
+    await mkdir(path.join(work, 'old', tools, 'src'), { recursive: true });
+    await writeFile(path.join(work, 'new', tools, 'docs/FRAMEWORK.md'), '// new docs');
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify([`${tools}/src/framework`, `${tools}/docs`]));
+    await rename(path.join(root, 'src/framework'), path.join(work, 'old', tools, 'src/framework'));
+    await mkdir(path.join(work, 'new', tools, 'src/framework'), { recursive: true });
+    await writeFile(path.join(work, 'new', tools, 'src/framework/index.ts'), '// half-copied core');
+    await rename(path.join(work, 'new', tools, 'src/framework'), path.join(root, 'src/framework'));
     // The next run finishes the cleanup: the core goes back, the docs were never touched, and the old files are restored.
     await assert.rejects(updateGame(target, undefined, { onSwap: () => { throw new Error('stop here'); } }), /stop here/);
     assert.deepEqual(await snapshot(root), before);
@@ -140,7 +140,7 @@ test('an update interrupted partway is undone on the next run', async () => {
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
-test('a failed renderer config edit restores the game config', async () => {
+test('a failed renderer config edit leaves the whole game unchanged', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-config-'));
   try {
     const target = path.join(temp, 'game');
@@ -148,9 +148,54 @@ test('a failed renderer config edit restores the game config', async () => {
     await writeFile(path.join(target, 'tsconfig.json'), '{ "compilerOptions": ');
     const config = await readFile(path.join(target, 'tsconfig.json'), 'utf8');
     const vite = await readFile(path.join(target, 'vite.config.ts'), 'utf8');
+    const toolsBefore = await snapshot(path.join(target, tools));
     await assert.rejects(updateGame(target, ['renderers']));
     assert.equal(await readFile(path.join(target, 'tsconfig.json'), 'utf8'), config);
     assert.equal(await readFile(path.join(target, 'vite.config.ts'), 'utf8'), vite);
+    assert.deepEqual(await snapshot(path.join(target, tools)), toolsBefore);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('recovery can be interrupted and run again without losing the game', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-repeat-recovery-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    const root = path.join(target, tools);
+    await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
+    await writeFile(path.join(root, 'docs/FRAMEWORK.md'), '// stale docs');
+    const before = await snapshot(root);
+    // State after an earlier recovery restored the core, then stopped before it restored the docs.
+    const work = path.join(root, '.update');
+    await mkdir(path.join(work, 'new', tools, 'src/framework'), { recursive: true });
+    await writeFile(path.join(work, 'new', tools, 'src/framework/index.ts'), '// new core');
+    await mkdir(path.join(work, 'old', tools), { recursive: true });
+    await rename(path.join(root, 'docs'), path.join(work, 'old', tools, 'docs'));
+    await mkdir(path.join(root, 'docs'), { recursive: true });
+    await writeFile(path.join(root, 'docs/FRAMEWORK.md'), '// new docs');
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify([`${tools}/src/framework`, `${tools}/docs`]));
+    await assert.rejects(updateGame(target, undefined, { onSwap: () => { throw new Error('stop here'); } }), /stop here/);
+    assert.deepEqual(await snapshot(root), before);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('an update interrupted while replacing the version file can still be read', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-version-recovery-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    const root = path.join(target, tools);
+    const version = await readFile(path.join(root, 'VERSION.json'), 'utf8');
+    // The old version file was moved aside and the new one was staged, then the app closed.
+    const work = path.join(root, '.update');
+    await mkdir(path.join(work, 'old', tools), { recursive: true });
+    await mkdir(path.join(work, 'new', tools), { recursive: true });
+    await rename(path.join(root, 'VERSION.json'), path.join(work, 'old', tools, 'VERSION.json'));
+    await writeFile(path.join(work, 'new', tools, 'VERSION.json'), '{}');
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify([`${tools}/VERSION.json`]));
+    assert.equal((await inspectGame(target)).outdated, false);
+    assert.equal(await readFile(path.join(root, 'VERSION.json'), 'utf8'), version);
+    await assert.rejects(access(work));
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
