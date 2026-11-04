@@ -2,6 +2,7 @@ export * from './events';
 export * from './state';
 export * from './ui';
 export * from './loop';
+export * from './fixed-step';
 export * from './input';
 export * from './storage';
 export * from './audio';

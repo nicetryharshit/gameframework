@@ -41,7 +41,23 @@ off();
 events.clear();
 ```
 
-`dt` is seconds, capped at 0.1 by default after a stall. If you use input, call `input.update()` before `states.update(dt)`. A state is a flow controller, not a renderer scene. If the world stays alive during pause, keep rendering it while skipping gameplay updates; dispose it when leaving the game.
+`dt` is seconds, capped at 0.1 by default after a stall. If you use input, call `input.update()` before `states.update(dt)`.
+
+### Fixed steps
+
+Physics and deterministic gameplay need a fixed step, not the variable `dt`. `FixedStep` runs an update in whole steps and carries leftover time into the next frame:
+
+```ts
+import { FixedStep, GameLoop } from 'gameframework';
+
+const fixed = new FixedStep(1 / 60, 5); // step size, most steps per frame
+const loop = new GameLoop(dt => {
+  fixed.advance(dt, step => world.update(step)); // whole steps only
+  view.render(world, fixed.alpha);              // alpha: 0..1 progress into the next step
+});
+```
+
+If a frame is longer than `maxSteps` steps, the rest of the backlog is dropped, so a long stall does not replay for seconds. Call `fixed.reset()` when a level starts or the game resumes. `GameLoop` itself is unchanged. A state is a flow controller, not a renderer scene. If the world stays alive during pause, keep rendering it while skipping gameplay updates; dispose it when leaving the game.
 
 Events are synchronous. Both `on` and `once` return unsubscribe functions. State transitions requested inside `enter` or `exit` are queued; the last pending request wins. Transition cycles throw an error. A disposed state manager cannot be reused.
 
