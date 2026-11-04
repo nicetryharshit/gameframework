@@ -123,6 +123,7 @@ function nextStepText(platform, status) {
 
 function navigate(next) {
   route = next;
+  iosDraft = null;
   try { if (win.location.hash.slice(1) !== next) win.location.hash = next; } catch { /* the hash is cosmetic */ }
   say('');
   if (next && next !== 'framework' && !checks[next]) void loadCheck(next);
@@ -352,6 +353,87 @@ function renderOverview() {
   return view;
 }
 
+/* ---------- iOS project settings ---------- */
+/** Unsaved edits to the iOS settings card. Cleared on save and when the user leaves the iOS page. */
+let iosDraft = null;
+const IOS_FIELDS = [
+  ['displayName', 'App name', 'Shown under the icon and used for the Xcode project. Empty uses the game name.'],
+  ['identifier', 'Bundle identifier', 'Unique ID for the App Store. Empty uses the default shown here.'],
+  ['buildNumber', 'Build number', 'Goes up with each upload to App Store Connect, e.g. 1 or 1.2.'],
+  ['minimumVersion', 'Minimum iOS version', 'The oldest iOS version the app runs on.'],
+];
+
+function iosSettingsCard() {
+  const exists = !!check('ios', 'Native project')?.ok;
+  const saved = state.project.profiles['ios-development'].ios ?? {};
+  if (!iosDraft) iosDraft = { ...saved };
+  const card = el('div', 'card'); card.append(el('h2', '', 'Project settings'));
+  const form = el('form', 'form'); form.id = 'ios-settings';
+  form.append(el('p', 'hint', exists
+    ? 'Saving updates your Xcode project in place. Your other Xcode edits stay as they are. Regenerate rebuilds the project from scratch and keeps the old one as a backup.'
+    : 'These apply when the Xcode project is set up. Save them before you set up.'));
+  const defaults = { displayName: state.project.name, identifier: state.project.profiles['ios-development'].identifier, buildNumber: '1', minimumVersion: '15.0' };
+  for (const [key, label, help] of IOS_FIELDS) {
+    const wrap = el('label', '', label);
+    const input = el('input'); input.name = key; input.value = iosDraft[key] ?? ''; input.placeholder = defaults[key] ?? ''; input.maxLength = 80;
+    input.addEventListener('input', () => { iosDraft[key] = input.value; });
+    wrap.append(input, el('small', 'muted small', help));
+    form.append(wrap);
+  }
+  const row = el('div', 'row-actions');
+  row.append(button(exists ? 'Save and update project' : 'Save settings', () => saveIosSettings(), 'btn primary'), button('Reset fields to defaults', () => { iosDraft = {}; draw(true); }, 'link'));
+  form.append(row, el('p', 'hint small', exists ? 'Saves these values and writes them into the existing Xcode project.' : 'Saves these values. They are used when you set up the Xcode project.'));
+  form.addEventListener('submit', event => { event.preventDefault(); void saveIosSettings(); });
+  card.append(form);
+  if (exists) {
+    const zone = el('div', 'danger-zone');
+    zone.append(el('h3', '', 'Rebuild from scratch'), el('p', 'hint', 'Moves the current Xcode project into a backup folder and creates a new one from these settings. Only use this if the project is broken. Edits you made in Xcode stay in the backup.'));
+    zone.append(button('Rebuild project…', () => regenerateIos(), 'btn danger'));
+    card.append(zone);
+  }
+  return card;
+}
+
+/** Writes a timestamped line to the Output panel for the iOS page, so every save or rebuild leaves a record. */
+function note(text) {
+  checkLog.set('ios', `${checkLog.get('ios') ?? ''}[${CHECK_TIME()}] ${text}\n`);
+}
+
+async function regenerateIos() {
+  if (!window.confirm('Rebuild the Xcode project from scratch?\n\nThe current project moves to src-tauri/gen/apple.backup-… so nothing is lost. Your Xcode edits will be in the backup, not in the new project. Continue?')) return;
+  note('Rebuilding the Xcode project from scratch…');
+  try {
+    const { backup } = await api('ios-regenerate', {});
+    note(`Old project moved to src-tauri/gen/${backup}. Rename that folder back to apple to undo.`);
+    say(`The old project is in src-tauri/gen/${backup}. Setting up a new one now. Rename it back to apple to undo.`);
+    state = await api('state');
+    draw(true);
+  } catch (error) { note(`Rebuild failed: ${error.message}`); say(error.message); }
+}
+
+async function saveIosSettings() {
+  const settings = Object.fromEntries(Object.entries(iosDraft ?? {}).map(([key, value]) => [key, String(value ?? '').trim()]).filter(([, value]) => value));
+  note(`Saving iOS settings: ${Object.keys(settings).length ? Object.entries(settings).map(([k, v]) => `${k}=${v}`).join(', ') : 'all defaults'}`);
+  try {
+    const result = await api('ios-settings', { settings });
+    iosDraft = null;
+    state = await api('state');
+    const project = result.project;
+    if (!project) {
+      note('Saved. The Xcode project does not exist yet, so the settings apply at set up.');
+      say('iOS settings saved. They apply when you set up the Xcode project.');
+    } else {
+      note(`Saved. Updated in Xcode project: ${project.changed.length ? project.changed.join(', ') : 'nothing changed (values already match)'}.`);
+      if (project.missing.length) note(`Not found in the project, left alone: ${project.missing.join(', ')}.`);
+      note('Your other Xcode edits are unchanged.');
+      const parts = [`Updated ${project.changed.length ? project.changed.join(', ') : 'nothing new'} in your Xcode project. Your other Xcode edits are unchanged.`];
+      if (project.missing.length) parts.push(`Not found in the project, so left alone: ${project.missing.join(', ')}.`);
+      say(parts.join(' '));
+    }
+    draw(true);
+  } catch (error) { note(`Save failed: ${error.message}`); say(error.message); draw(true); }
+}
+
 /* ---------- platform / steam / maintenance pages ---------- */
 function stepItem(item) {
   const kind = item.ok ? 'ok' : item.blocking ? 'bad' : 'idle';
@@ -450,12 +532,13 @@ function renderPlatform(id) {
     });
     if (!isTools) {
       const busy = checking.has(id);
-      const recheck = button(busy ? 'Checking…' : 'Re-check', () => loadCheck(id, true), 'link');
+      const recheck = button(busy ? 'Checking…' : 'Check setup again', () => loadCheck(id, true), 'link');
       recheck.disabled = busy;
       recheck.setAttribute('aria-busy', String(busy));
       actions.append(recheck);
     }
   }
+  if (id === 'ios') view.append(iosSettingsCard());
   view.append(actions);
   if (release) view.append(el('p', 'hint', 'Android release builds need signing, which isn’t set up yet. Use a debug build for now.'));
   if (job) view.append(renderResult(platform, job));

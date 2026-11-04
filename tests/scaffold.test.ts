@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -77,6 +77,39 @@ test('updating a game refreshes its tools and leaves its own files alone', async
     assert.equal(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), '// my game code');
     assert.equal(await readFile(path.join(target, 'export-profiles.json'), 'utf8'), '{"mine":true}');
     await assert.rejects(updateGame(temp), /not a Game Workshop game/);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+/** Every file under a folder with its text, so two states can be compared exactly. */
+async function snapshot(dir: string) {
+  const out: Record<string, string> = {};
+  for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const file = path.join(entry.parentPath ?? entry.path, entry.name);
+    out[path.relative(dir, file)] = await readFile(file, 'utf8');
+  }
+  return out;
+}
+
+test('a failed update puts every part back exactly as it was', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-failed-update-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    // Make the game's tools differ from the framework so a rollback is visible.
+    await writeFile(path.join(target, tools, 'src/framework/index.ts'), '// stale core');
+    await writeFile(path.join(target, tools, 'docs/FRAMEWORK.md'), '// stale docs');
+    const before = await snapshot(path.join(target, tools));
+    // Fail on the last part, after the earlier parts have already been swapped in.
+    await assert.rejects(
+      updateGame(target, undefined, { onSwap: (item: string) => { if (item === 'docs') throw new Error('disk full'); } }),
+      /disk full/
+    );
+    assert.deepEqual(await snapshot(path.join(target, tools)), before);
+    await assert.rejects(access(path.join(target, tools, '.update')));
+    // The game still updates normally afterwards.
+    await updateGame(target);
+    assert.equal((await inspectGame(target)).outdated, false);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 

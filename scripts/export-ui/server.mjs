@@ -6,7 +6,7 @@ import { access, readFile, readdir, realpath, stat, writeFile, mkdir } from 'nod
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, nativeProjectExists, runStep, cancelChild, collectArtifacts } from './builds.mjs';
+import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, validateIosSettings, nativeProjectExists, updateIosProject, moveIosProjectAside, runStep, cancelChild, collectArtifacts } from './builds.mjs';
 
 const assets = path.dirname(fileURLToPath(import.meta.url));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
@@ -166,6 +166,35 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         if (url.pathname === '/api/open-game') return json(await openGame(data));
         if (url.pathname === '/api/update-game') return json(await updateGame(data));
         if (url.pathname === '/api/add-renderer') return json(await addRenderer(data));
+        if (url.pathname === '/api/ios-settings') {
+          if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
+          const settings = validateIosSettings(data.settings);
+          const info = await projectInfo(root);
+          saving = true;
+          try {
+            for (const mode of ['development', 'release']) {
+              const { ios, ...rest } = info.profiles[`ios-${mode}`];
+              await saveProfile(root, settings ? { ...rest, ios: settings } : rest);
+            }
+            // An existing project is updated in place, so Xcode edits you made are kept.
+            const update = await nativeProjectExists(root, 'ios')
+              ? await updateIosProject(root, { ...info.profiles['ios-development'], ios: settings })
+              : undefined;
+            return json({ ok: true, ios: settings ?? null, project: update ?? null });
+          } finally { saving = false; }
+        }
+        if (url.pathname === '/api/ios-regenerate') {
+          if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
+          if (!(await nativeProjectExists(root, 'ios'))) return json({ error: 'There is no Xcode project to regenerate yet. Use Set up.' }, 409);
+          saving = true;
+          let backup;
+          try { backup = await moveIosProjectAside(root); } finally { saving = false; }
+          // Start the normal setup job; it creates the project from the saved settings.
+          const profile = validateProfile((await projectInfo(root)).profiles['ios-development']);
+          const job = { id: `${Date.now()}-${++serial}`, profile, action: 'initialize', status: 'running', started: new Date().toISOString(), log: `Moved the existing project to src-tauri/gen/${backup}. Restore it by renaming that folder back to apple.\n`, cancelled: false };
+          active = job; jobs.push(job); if (jobs.length > 20) jobs.shift();
+          json({ id: job.id, backup }); void execute(job); return;
+        }
         if (url.pathname === '/api/profile') {
           if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
           saving = true; try { return json(await saveProfile(root, data)); } finally { saving = false; }

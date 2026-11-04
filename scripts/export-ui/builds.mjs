@@ -6,12 +6,48 @@ import path from 'node:path';
 
 export const platforms = ['web', 'windows', 'macos', 'linux', 'android', 'ios'];
 const hosts = { windows: 'win32', macos: 'darwin', linux: 'linux', ios: 'darwin' };
+const IDENTIFIER = /^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*){1,}$/;
+/** The default bundle identifier for a game: com.game.<gameName>, lowercase letters and digits only. */
+export function defaultIdentifier(gameName) {
+  const slug = String(gameName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `com.game.${slug || 'game'}`;
+}
+/**
+ * iOS-only settings, applied when the Xcode project is created. Each one is optional:
+ * an empty value falls back to the game name (app name), com.game.<gameName> (identifier), or Tauri's default (minimum version).
+ */
+export function validateIosSettings(value) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('iOS settings must be an object');
+  const out = {};
+  const text = (key, max) => { const v = value[key]; if (v === undefined || v === null || String(v).trim() === '') return; const t = String(v).trim(); if (t.length > max) throw new Error(`Keep ${key} to ${max} characters`); out[key] = t; };
+  text('displayName', 80);
+  if (value.identifier) { const id = String(value.identifier).trim(); if (!IDENTIFIER.test(id)) throw new Error('iOS bundle identifier must look like com.studio.game'); out.identifier = id; }
+  if (value.buildNumber) { const b = String(value.buildNumber).trim(); if (!/^\d+(\.\d+){0,2}$/.test(b)) throw new Error('Build number must be a whole number such as 1, or 1.2.3'); out.buildNumber = b; }
+  if (value.minimumVersion) { const m = String(value.minimumVersion).trim(); if (!/^\d+(\.\d+)?$/.test(m)) throw new Error('Minimum iOS version must look like 15.0'); out.minimumVersion = m; }
+  return Object.keys(out).length ? out : undefined;
+}
 export function validateProfile(value) {
   if (!value || !platforms.includes(value.platform) || !['development', 'release'].includes(value.mode)) throw new Error('Invalid platform or build mode');
   if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80) throw new Error('App name must be 1–80 characters');
   if (!/^\d+\.\d+\.\d+$/.test(value.version)) throw new Error('Use a version such as 1.0.0');
-  if (!/^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*){1,}$/.test(value.identifier)) throw new Error('Use a bundle identifier such as com.studio.game');
-  return { platform: value.platform, mode: value.mode, name: value.name.trim(), version: value.version, identifier: value.identifier };
+  if (!IDENTIFIER.test(value.identifier)) throw new Error('Use a bundle identifier such as com.studio.game');
+  const ios = value.platform === 'ios' ? validateIosSettings(value.ios) : undefined;
+  return { platform: value.platform, mode: value.mode, name: value.name.trim(), version: value.version, identifier: value.identifier, ...(ios ? { ios } : {}) };
+}
+/** The configuration passed to `tauri <platform> init`. Only set values are sent, so Tauri's defaults still apply. */
+export function initConfig(profile) {
+  const config = { productName: profile.name, version: profile.version, identifier: profile.identifier };
+  if (profile.platform === 'ios' && profile.ios) {
+    const { displayName, identifier, buildNumber, minimumVersion } = profile.ios;
+    if (displayName) config.productName = displayName;
+    if (identifier) config.identifier = identifier;
+    const iOS = {};
+    if (buildNumber) iOS.bundleVersion = buildNumber;
+    if (minimumVersion) iOS.minimumSystemVersion = minimumVersion;
+    if (Object.keys(iOS).length) config.bundle = { iOS };
+  }
+  return config;
 }
 export const profileId = profile => `${profile.platform}-${profile.mode}`;
 export async function projectInfo(root) {
@@ -22,7 +58,7 @@ export async function projectInfo(root) {
   try { profiles = JSON.parse(await readFile(path.join(root, 'export-profiles.json'), 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw new Error('Could not read export-profiles.json; fix or restore it before continuing'); }
   for (const platform of platforms) for (const mode of ['development', 'release']) {
     const id = `${platform}-${mode}`;
-    profiles[id] = validateProfile(profiles[id] ?? { platform, mode, name: config.productName || pkg.name, version: config.version || pkg.version || '0.1.0', identifier: config.identifier || 'com.example.game' });
+    profiles[id] = validateProfile(profiles[id] ?? { platform, mode, name: config.productName || pkg.name, version: config.version || pkg.version || '0.1.0', identifier: config.identifier || defaultIdentifier(config.productName || pkg.name) });
     if (profileId(profiles[id]) !== id) throw new Error(`Mismatched profile: ${id}`);
   }
   return { name: config.productName || pkg.name, root, host: process.platform, kind: pkg.name === 'gameframework' ? 'framework' : 'game', hasTests: Boolean(pkg.scripts?.test), profiles };
@@ -66,7 +102,7 @@ export function buildPlan(root, profile, action, host = process.platform) {
     ];
   }
   const cli = tool(root, '@tauri-apps/cli/tauri.js');
-  const config = JSON.stringify({ productName: p.name, version: p.version, identifier: p.identifier });
+  const config = JSON.stringify(initConfig(p));
   const mobile = ['android', 'ios'].includes(p.platform);
   if (!mobile && ['initialize', 'open'].includes(action)) throw new Error('Native project actions apply to Android and iOS');
   if (mobile && action === 'initialize') return [{ command: process.execPath, args: [cli, p.platform, 'init', '--ci', '--config', config], title: `Initialize ${p.platform} project` }];
@@ -167,6 +203,70 @@ export async function checkPlatform(root, platform, host = process.platform, act
   if (['android', 'ios'].includes(platform)) add('Native project', await exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)), platform === 'ios' ? 'Created once in src-tauri/gen/apple. Edits you make in Xcode live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.' : 'Created once in src-tauri/gen/android. Edits you make in Android Studio live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.', false);
   return { checks, ready: checks.every(check => check.ok || !check.blocking), note: 'Checks detect common prerequisites. Platform SDK components and Rust target availability are verified by the native build tools.' };
 }
+/**
+ * The Xcode build settings that Game Workshop owns, and the value each comes from.
+ * Everything else in the project (capabilities, signing choices, your own edits) is left as it is.
+ */
+export function iosBuildSettings(profile) {
+  const ios = profile.ios ?? {};
+  const settings = {
+    PRODUCT_BUNDLE_IDENTIFIER: ios.identifier || profile.identifier,
+    PRODUCT_NAME: ios.displayName || profile.name,
+    MARKETING_VERSION: profile.version,
+    IPHONEOS_DEPLOYMENT_TARGET: ios.minimumVersion || '15.0'
+  };
+  if (ios.buildNumber) settings.CURRENT_PROJECT_VERSION = ios.buildNumber;
+  return settings;
+}
+
+/**
+ * Rewrites those settings inside the existing project, in place. Works on the Xcode project file and on
+ * XcodeGen's project.yml, whichever exists. Only values Game Workshop owns are changed, and only where the key already exists.
+ * Returns the keys it changed, so the dashboard can say what happened. Keys missing from the project are reported, not invented.
+ */
+export async function updateIosProject(root, profile) {
+  const base = path.join(root, 'src-tauri', 'gen', 'apple');
+  const files = [];
+  try { for (const name of readdirSync(base)) { if (name.endsWith('.xcodeproj')) files.push(path.join(base, name, 'project.pbxproj')); } } catch { /* not generated yet */ }
+  files.push(path.join(base, 'project.yml'));
+  const wanted = iosBuildSettings(profile);
+  const changed = new Set(); const touched = []; const missing = new Set(Object.keys(wanted));
+  for (const file of files) {
+    const text = await readFile(file, 'utf8').catch(() => undefined);
+    if (text === undefined) continue;
+    touched.push(path.relative(root, file));
+    let next = text;
+    for (const [key, value] of Object.entries(wanted)) {
+      // Matches `KEY = value;` (Xcode) and `KEY: value` (project.yml). A quoted value keeps its quotes.
+      const pattern = new RegExp(`(\\b${key}[ \\t]*[=:][ \\t]*)("[^"\\n]*"|[^;\\n]*?)([ \\t]*;?[ \\t]*)$`, 'gm');
+      if (!pattern.test(next)) continue;
+      pattern.lastIndex = 0;
+      next = next.replace(pattern, (match, prefix, current, tail) => {
+        missing.delete(key);
+        const replacement = current.startsWith('"') ? `"${value}"` : value;
+        if (current !== replacement) changed.add(key);
+        return `${prefix}${replacement}${tail}`;
+      });
+    }
+    if (next !== text) await writeFile(file, next);
+  }
+  return { files: touched, changed: [...changed], missing: [...missing] };
+}
+
+/**
+ * Moves the Xcode project aside instead of deleting it, so regenerating is reversible.
+ * Returns the backup's folder name, relative to src-tauri/gen.
+ */
+export async function moveIosProjectAside(root, now = new Date()) {
+  const gen = path.join(root, 'src-tauri', 'gen');
+  const from = path.join(gen, 'apple');
+  if (!(await exists(from))) return undefined;
+  const stamp = now.toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const to = path.join(gen, `apple.backup-${stamp}`);
+  await rename(from, to);
+  return path.basename(to);
+}
+
 export async function nativeProjectExists(root, platform) { return exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)); }
 export function cancelChild(child) {
   if (!child?.pid) return;

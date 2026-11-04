@@ -151,3 +151,8 @@ dialog::backdrop{background:rgba(0,0,0,.5)}
 .pick .btn{margin-left:auto}
 .chip{font:11px var(--mono);color:var(--muted);white-space:nowrap}
 .chip.warn{color:var(--warn)}.chip.bad{color:var(--bad)}.chip.ok{color:var(--ok)}
+
+.danger-zone{margin-top:28px;padding-top:20px;border-top:1px solid var(--line);display:grid;gap:8px;justify-items:start}
+.danger-zone h3{font:11px var(--mono);font-weight:400;color:var(--bad);letter-spacing:.04em;text-transform:lowercase;margin:0}
+.btn.danger{color:var(--bad);border-color:var(--bad)}
+.hint.small{font-size:12px;margin-top:6px}

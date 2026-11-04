@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { access, chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -105,14 +105,11 @@ export async function addRenderer(directory, id) {
   const renderers = COMPONENTS.find(component => component.id === 'renderers');
   const copied = await readRegistry(path.join(target, tools));
   if (!copied.some(item => item.id === id) || !(await access(path.join(target, tools, 'src/renderers', entry.entry)).then(() => true, () => false))) {
-    for (const item of renderers.files) {
-      await rm(path.join(target, tools, item), { recursive: true, force: true });
-      await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
-    }
     const versionFile = path.join(target, tools, 'VERSION.json');
     const meta = JSON.parse(await readFile(versionFile, 'utf8'));
     meta.components = { ...meta.components, renderers: (await frameworkVersion()).hashes.renderers };
-    await writeFile(versionFile, JSON.stringify(meta, null, 2) + '\n');
+    const copies = renderers.files.map(item => ({ path: item, from: path.join(source, item) }));
+    await replaceItems(target, [...copies, { path: 'VERSION.json', text: JSON.stringify(meta, null, 2) + '\n' }]);
   }
   const notes = await wireRenderers(target);
   const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
@@ -187,11 +184,81 @@ export async function writeLaunchers(directory, serverPath) {
   }
 }
 
+const exists = file => access(file).then(() => true, () => false);
+
+/**
+ * Puts back each listed item: a new copy that was placed is removed, and an old copy that was moved aside is restored.
+ * An item that was never reached still has its staged copy and is left as it was.
+ */
+async function restoreItems(root, work, paths) {
+  for (const item of paths) {
+    const dest = path.join(root, item);
+    if (!(await exists(path.join(work, 'new', item)))) await rm(dest, { recursive: true, force: true });
+    if (await exists(path.join(work, 'old', item))) {
+      await mkdir(path.dirname(dest), { recursive: true });
+      await rename(path.join(work, 'old', item), dest);
+    }
+  }
+}
+
+/** Finishes the cleanup of an update that was interrupted (for example, the app was closed mid-update). */
+async function recoverInterruptedUpdate(root) {
+  const work = path.join(root, '.update');
+  if (!(await exists(work))) return;
+  const manifest = await readFile(path.join(work, 'manifest.json'), 'utf8').then(JSON.parse, () => undefined);
+  if (manifest) await restoreItems(root, work, manifest);
+  await rm(work, { recursive: true, force: true });
+}
+
+/**
+ * Replaces framework files in a game, all or nothing. Each new copy is built in a staging folder first.
+ * Then each old item is moved aside and its replacement moved in. If any step fails, every item is put back as it was.
+ * Old copies are deleted only after everything is in place.
+ * Each item is { path, from } to copy a file or folder, or { path, text } to write a file.
+ */
+async function replaceItems(target, items, { onSwap } = {}) {
+  const root = path.join(target, tools);
+  const work = path.join(root, '.update');
+  await recoverInterruptedUpdate(root);
+  await mkdir(path.join(work, 'new'), { recursive: true });
+  try {
+    for (const item of items) {
+      const dest = path.join(work, 'new', item.path);
+      await mkdir(path.dirname(dest), { recursive: true });
+      if (item.text !== undefined) await writeFile(dest, item.text);
+      else await cp(item.from, dest, { recursive: true });
+    }
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify(items.map(item => item.path)));
+  } catch (error) {
+    await rm(work, { recursive: true, force: true });
+    throw error;
+  }
+  const paths = items.map(item => item.path);
+  try {
+    for (const item of items) {
+      await onSwap?.(item.path);
+      const dest = path.join(root, item.path);
+      if (await exists(dest)) {
+        await mkdir(path.dirname(path.join(work, 'old', item.path)), { recursive: true });
+        await rename(dest, path.join(work, 'old', item.path));
+      }
+      await mkdir(path.dirname(dest), { recursive: true });
+      await rename(path.join(work, 'new', item.path), dest);
+    }
+  } catch (error) {
+    try { await restoreItems(root, work, paths); }
+    catch (restoreError) { throw new Error(`The update failed and could not be undone. Your previous files are in ${path.join(work, 'old')}. ${restoreError.message}`); }
+    await rm(work, { recursive: true, force: true });
+    throw error;
+  }
+  await rm(work, { recursive: true, force: true });
+}
+
 /**
  * Copies the chosen components (default: all) from this framework into a game.
  * Game code, src-tauri, profiles and Builds are not touched. Returns what changed and anything the game must wire up by hand.
  */
-export async function updateGame(directory, only) {
+export async function updateGame(directory, only, { onSwap } = {}) {
   const target = path.resolve(directory);
   const before = await inspectGame(target);
   const unknown = (only ?? []).filter(id => !COMPONENTS.some(component => component.id === id));
@@ -200,15 +267,13 @@ export async function updateGame(directory, only) {
   if (!chosen.length) throw new Error('Choose at least one part to update.');
   const versionFile = path.join(target, tools, 'VERSION.json');
   const meta = JSON.parse(await readFile(versionFile, 'utf8'));
-  for (const component of chosen) for (const item of component.files) {
-    await rm(path.join(target, tools, item), { recursive: true, force: true });
-    await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
-  }
   const framework = await frameworkVersion();
   const components = { ...meta.components };
   for (const component of chosen) components[component.id] = framework.hashes[component.id];
   const everything = chosen.length === COMPONENTS.length;
-  await writeFile(versionFile, JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n');
+  const text = JSON.stringify({ framework: meta.framework, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
+  const copies = chosen.flatMap(component => component.files.map(item => ({ path: item, from: path.join(source, item) })));
+  await replaceItems(target, [...copies, { path: 'VERSION.json', text }], { onSwap });
 
   // New renderers arrive with the renderers part. Map their aliases so they are ready to import.
   const notes = chosen.some(component => component.id === 'renderers') ? await wireRenderers(target) : [];
@@ -272,7 +337,7 @@ export async function createGame(directory, renderer) {
   await cp(path.join(source, 'src-tauri'), path.join(target, 'src-tauri'), { recursive: true, filter: entry => !['target', 'gen'].includes(path.basename(entry)) });
   const configPath = path.join(target, 'src-tauri', 'tauri.conf.json');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
-  config.productName = name; config.identifier = `com.example.${name.replaceAll('-', '')}`; config.app.windows[0].title = name;
+  config.productName = name; config.identifier = `com.game.${name.replace(/[^a-z0-9]/g, '') || 'game'}`; config.app.windows[0].title = name;
   await writeFile(configPath, JSON.stringify(config, null, 2));
   await mkdir(path.join(target, 'vendor'), { recursive: true });
   await cp(path.join(source, 'vendor', 'README.md'), path.join(target, 'vendor', 'README.md'));

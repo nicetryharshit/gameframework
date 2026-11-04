@@ -21,7 +21,21 @@ npm run init:ios
 npm run open:ios
 ```
 
-Initialization generates the native Xcode project under `src-tauri/gen/apple/`. Opening uses Tauri's `ios dev --open` flow, preserving the build integration with Rust and the web frontend. You can edit native settings, capabilities, permissions and native code in Xcode. Keep the rest of the game repository: this is a native project integrated with its JavaScript/Rust sources, not a standalone export that can be moved away from them.
+Initialization generates the native Xcode project under `src-tauri/gen/apple/`.
+
+**Project settings** (on the iOS page of Game Workshop):
+
+| Setting | What it sets | Default |
+| --- | --- | --- |
+| App name | The name under the icon and the Xcode project name | The game name |
+| Bundle identifier | The App Store identifier | `com.game.<gameName>`, lowercase letters and digits only (`My Game` → `com.game.mygame`) |
+| Build number | `CFBundleVersion`. Goes up with each upload | `1` |
+| Minimum iOS version | The oldest iOS the app runs on | `15.0` |
+
+Saving applies the settings to the existing Xcode project in place. Only the values above are rewritten, and the page reports which ones it updated and which weren't found in the project. Your other Xcode edits stay as they are.
+
+**Regenerate project** rebuilds the project from scratch. It moves the current folder to `src-tauri/gen/apple.backup-<time>` first, so nothing is deleted. To go back, rename the backup to `apple`. Your Xcode edits are in the backup, so copy anything you need into the new project.
+
 
 Use `npm run dev:ios` for a simulator or configured device. For physical-device development, Tauri may require `--host`; Vite honors `TAURI_DEV_HOST`. `npm run build:ios` runs a release build/archive/export flow. An IPA is the eventual device/distribution artifact after signing/export configuration; unsigned simulator development is separate. No Apple signing setup is configured here.
 
