@@ -1,14 +1,41 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, access, utimes } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 // @ts-expect-error Plain Node tooling module.
-import { buildPlan, validateProfile } from '../scripts/export-ui/builds.mjs';
+import { buildPlan, validateProfile, collectArtifacts, clearPreviousOutput } from '../scripts/export-ui/builds.mjs';
 // @ts-expect-error Plain Node tooling module.
 import { startExportUI } from '../scripts/export-ui/server.mjs';
 
 const profile = { platform: 'web', mode: 'development', name: 'Test game', version: '1.0.0', identifier: 'com.test.game' };
+test('exports come only from the current build, and an empty build fails instead of exporting nothing', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'export-collect-'));
+  try {
+    const release = { platform: 'linux', mode: 'release' };
+    const bundles = path.join(temp, 'src-tauri/target/release/bundle/deb');
+    await mkdir(bundles, { recursive: true });
+    await writeFile(path.join(temp, 'src-tauri/Cargo.toml'), 'name = "game"\n');
+    // A package from an earlier build, with an old timestamp, is still exported when nothing cleared it.
+    const old = path.join(bundles, 'game_0.9_amd64.deb');
+    await writeFile(old, 'earlier package');
+    const twoDaysAgo = new Date(Date.now() - 2 * 86400e3);
+    await utimes(old, twoDaysAgo, twoDaysAgo);
+    const first = await collectArtifacts(temp, release, { id: 'first', started: new Date().toISOString(), log: '' });
+    assert.deepEqual(first.artifacts.map((item: { name: string }) => item.name), ['game_0.9_amd64.deb']);
+
+    // Before a new build, the old package is cleared. If that build produces nothing, the export fails.
+    await clearPreviousOutput(temp, release);
+    await assert.rejects(collectArtifacts(temp, release, { id: 'empty', started: new Date().toISOString(), log: '' }), /produced no output/);
+
+    // A new build's package is exported, and nothing from before.
+    await mkdir(bundles, { recursive: true });
+    await writeFile(path.join(bundles, 'game_1.0_amd64.deb'), 'new package');
+    const second = await collectArtifacts(temp, release, { id: 'second', started: new Date().toISOString(), log: '' });
+    assert.deepEqual(second.artifacts.map((item: { name: string }) => item.name), ['game_1.0_amd64.deb']);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
 test('build profiles reject unsupported targets and unsafe options', () => {
   assert.throws(() => validateProfile({ ...profile, platform: 'arbitrary-command' }), /Invalid/);
   assert.throws(() => validateProfile({ ...profile, version: 'no' }), /version/);

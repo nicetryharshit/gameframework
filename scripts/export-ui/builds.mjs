@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
-import { access, readFile, mkdir, writeFile, readdir, cp, stat, rename } from 'node:fs/promises';
+import { access, readFile, mkdir, writeFile, readdir, cp, stat, rename, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
@@ -282,6 +282,17 @@ export async function runStep(step, root, job, log) {
     child.on('error', reject); child.on('close', code => { job.child = undefined; code === 0 && !job.cancelled ? resolve() : reject(new Error(job.cancelled ? 'Cancelled' : `${step.title} failed (exit ${code})`)); });
   });
 }
+/**
+ * Removes packages left by earlier builds, so that what a build exports is only what it produced.
+ * Compiled code in target/ is kept, so the next build stays fast. Web builds have nothing to clear.
+ */
+export async function clearPreviousOutput(root, profile) {
+  if (profile.platform === 'web') return;
+  const folders = profile.platform === 'android'
+    ? [path.join(root, 'src-tauri/gen/android/app/build/outputs/apk'), path.join(root, 'src-tauri/gen/android/app/build/outputs/bundle')]
+    : [path.join(root, 'src-tauri/target', profile.mode === 'development' ? 'debug' : 'release', 'bundle')];
+  for (const folder of folders) await rm(folder, { recursive: true, force: true });
+}
 async function findArtifacts(directory, results = []) {
   for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
     const file = path.join(directory, entry.name);
@@ -302,7 +313,6 @@ export async function collectArtifacts(root, profile, job) {
     const nativeRoot = path.join(root, 'src-tauri/target', profile.mode === 'development' ? 'debug' : 'release');
     const files = await findArtifacts(profile.platform === 'android' ? path.join(root, 'src-tauri/gen/android/app/build/outputs') : path.join(nativeRoot, 'bundle'));
     for (const file of files) {
-      if ((await stat(file)).mtimeMs < Date.parse(job.started) - 2000) continue;
       const name = path.basename(file); await cp(file, path.join(directory, name), { recursive: true, verbatimSymlinks: true });
     }
     // Keep the runnable host binary too, including Linux binaries without extensions.
@@ -316,5 +326,6 @@ export async function collectArtifacts(root, profile, job) {
   const artifacts = [];
   for (const name of await readdir(directory)) { const file = path.join(directory, name); const info = await stat(file); artifacts.push({ name, directory: info.isDirectory(), bytes: info.size, path: path.relative(root, file).replaceAll('\\', '/') }); }
   await writeFile(path.join(directory, 'build-report.json'), JSON.stringify({ profile, started: job.started, finished: new Date().toISOString(), artifacts }, null, 2));
+  if (!artifacts.length) throw new Error(`The build finished but produced no output for ${path.relative(root, directory).replaceAll('\\', '/')}. Check the build log for where the package was written.`);
   return { directory: path.relative(root, directory).replaceAll('\\', '/'), artifacts, runnable };
 }

@@ -6,7 +6,7 @@ import { access, readFile, readdir, realpath, stat, writeFile, mkdir } from 'nod
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, validateIosSettings, nativeProjectExists, updateIosProject, moveIosProjectAside, runStep, cancelChild, collectArtifacts } from './builds.mjs';
+import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, validateIosSettings, nativeProjectExists, updateIosProject, moveIosProjectAside, runStep, cancelChild, collectArtifacts, clearPreviousOutput } from './builds.mjs';
 
 const assets = path.dirname(fileURLToPath(import.meta.url));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
@@ -125,6 +125,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         if (job.action !== 'initialize' && !exists) throw new Error('Initialize the native project first.');
       }
       const steps = buildPlan(root, job.profile, job.action);
+      if (['build', 'run'].includes(job.action)) await clearPreviousOutput(root, job.profile);
       for (const step of steps) {
         if (job.cancelled) throw new Error('Cancelled');
         await runStep(step, root, job, text => {
