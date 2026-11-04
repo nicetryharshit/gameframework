@@ -173,6 +173,12 @@ export async function checkPlatform(root, platform, host = process.platform, act
   const add = (name, ok, detail, blocking = true) => checks.push({ name, ok, detail, blocking });
   const hostNames = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
   add('Build host', !hosts[platform] || hosts[platform] === host, `Current machine: ${hostNames[host] || host}${hosts[platform] ? ` · required: ${hostNames[hosts[platform]]}` : ''}`);
+  // A generated game also checks that its renderers, physics engines and imports agree (see wiring-check.mjs).
+  if (await exists(path.join(root, 'tools/gameframework/VERSION.json'))) {
+    const wiring = await import('../wiring-check.mjs').catch(() => undefined);
+    if (wiring) checks.push(...await wiring.wiringChecks(root));
+    else add('Game wiring', true, 'Update tools to turn on the wiring check.', false);
+  }
   for (const pkg of [...(action === 'dev' ? [] : ['typescript/bin/tsc']), 'vite/bin/vite.js', ...(platform === 'web' ? [] : ['@tauri-apps/cli/tauri.js'])]) {
     const name = { 'typescript/bin/tsc': 'TypeScript', 'vite/bin/vite.js': 'Vite', '@tauri-apps/cli/tauri.js': 'Tauri CLI' }[pkg];
     try { tool(root, pkg); add(name, true, 'Installed'); } catch { add(name, false, 'Use Install dependencies to set this up'); }

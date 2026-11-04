@@ -52,7 +52,7 @@ test('updating a game refreshes its tools and leaves its own files alone', async
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-update-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const ui = path.join(target, tools, 'scripts/export-ui/app.js');
     const original = await readFile(ui, 'utf8');
     await writeFile(ui, '// stale copy');
@@ -101,7 +101,7 @@ test('a failed update puts every part back exactly as it was', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-failed-update-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     // Make the game's tools differ from the framework so a rollback is visible.
     await writeFile(path.join(target, tools, 'src/framework/index.ts'), '// stale core');
     await writeFile(path.join(target, tools, 'docs/FRAMEWORK.md'), '// stale docs');
@@ -123,7 +123,7 @@ test('an update interrupted partway is undone on the next run', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-interrupted-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const root = path.join(target, tools);
     await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
     await writeFile(path.join(root, 'docs/FRAMEWORK.md'), '// stale docs');
@@ -150,7 +150,7 @@ test('a failed renderer config edit leaves the whole game unchanged', async () =
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-config-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     await writeFile(path.join(target, 'tsconfig.json'), '{ "compilerOptions": ');
     const config = await readFile(path.join(target, 'tsconfig.json'), 'utf8');
     const vite = await readFile(path.join(target, 'vite.config.ts'), 'utf8');
@@ -166,7 +166,7 @@ test('recovery can be interrupted and run again without losing the game', async 
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-repeat-recovery-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const root = path.join(target, tools);
     await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
     await writeFile(path.join(root, 'docs/FRAMEWORK.md'), '// stale docs');
@@ -189,7 +189,7 @@ test('an update interrupted while replacing the version file can still be read',
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-version-recovery-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const root = path.join(target, tools);
     const version = await readFile(path.join(root, 'VERSION.json'), 'utf8');
     // The old version file was moved aside and the new one was staged, then the app closed.
@@ -209,7 +209,7 @@ test('a game being updated refuses other readers and updaters until it finishes'
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-busy-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     let seen = '';
     await updateGame(target, undefined, {
       onSwap: async () => { seen = await inspectGame(target).then(() => 'read', (error: Error) => error.message); }
@@ -223,7 +223,7 @@ test('a lock left by a process that stopped does not block updates', async () =>
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-stale-lock-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     await writeFile(path.join(target, tools, '.lock'), '999999');
     await updateGame(target);
     assert.equal((await inspectGame(target)).outdated, false);
@@ -234,7 +234,7 @@ test('a committed update that stopped during cleanup finishes without losing the
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-committed-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const root = path.join(target, tools);
     const work = path.join(root, '.update');
     // The new core is installed. Its old copy is already gone, and the commit marker is still there.
@@ -252,7 +252,7 @@ test('an interrupted rollback cleanup does not remove the restored files', async
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-rollback-cleanup-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const root = path.join(target, tools);
     await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
     // The rollback restored the files and wrote its marker, then stopped while removing the staging folders.
@@ -270,7 +270,7 @@ test('adding a renderer maps it, adds only its packages, and is safe to repeat',
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-renderer-'));
   try {
     const target = path.join(temp, 'game');
-    await createGame(target, '2d');
+    await createGame(target, 'pixi');
     const states = async () => Object.fromEntries((await inspectGame(target)).renderers.map((item: { id: string; status: string }) => [item.id, item.status]));
     // A new game maps only its own renderer. Canvas needs no packages, so it is ready as soon as it is added.
     assert.deepEqual(await states(), { pixi: 'ready', three: 'available', canvas: 'available' });
@@ -299,7 +299,7 @@ test('adding a renderer maps it, adds only its packages, and is safe to repeat',
 
     // A game made before the registry existed gets its renderers mapped by a renderers update.
     const old = path.join(temp, 'old');
-    await createGame(old, '2d');
+    await createGame(old, 'pixi');
     await rm(path.join(old, tools, 'src/renderers/registry.json'));
     await rm(path.join(old, tools, 'src/renderers/canvas.ts'), { force: true }); // a subset game never had it
     const tsFile = path.join(old, 'tsconfig.json');
@@ -334,14 +334,9 @@ test('generated games type-check and build using only their copied tools', async
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
-test('a new game records its renderer, accepts the old 2d/3d names, and keeps the renderer on update', async () => {
+test('a new game records its renderer and keeps it on update', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-renderer-choice-'));
   try {
-    const legacy = path.join(temp, 'legacy');
-    await createGame(legacy, '3d');
-    assert.equal(JSON.parse(await readFile(path.join(legacy, tools, 'VERSION.json'), 'utf8')).renderer, 'three');
-    assert.match(await readFile(path.join(legacy, 'index.html'), 'utf8'), /src\/demo-3d\.ts/);
-
     const canvas = path.join(temp, 'canvas');
     await createGame(canvas, 'canvas');
     assert.equal(JSON.parse(await readFile(path.join(canvas, tools, 'VERSION.json'), 'utf8')).renderer, 'canvas');

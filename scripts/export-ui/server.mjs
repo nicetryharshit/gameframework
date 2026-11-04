@@ -154,7 +154,10 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       if (setupJob) {
         const check = await checkPlatform(root, job.profile.platform, process.platform, job.action);
         job.checks = check;
-        if (!check.ready) throw new Error('Prerequisite checks failed. Review the platform checklist.');
+        if (!check.ready) {
+          for (const item of check.checks.filter(entry => !entry.ok && entry.blocking)) log(job, `✕ ${item.name}: ${item.detail}\n`);
+          throw new Error('Prerequisite checks failed. Review the platform checklist.');
+        }
       }
       if (job.cancelled) throw new Error('Cancelled');
       if (setupJob && ['ios', 'android'].includes(job.profile.platform)) {

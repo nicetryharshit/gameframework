@@ -193,6 +193,8 @@ function renderSide() {
   const brand = el('div', 'brand');
   const logo = el('span', 'logo'); logo.append(icon(isFramework() ? 'layers' : 'play'));
   brand.append(logo, el('b', '', isFramework() ? 'Workshop' : state.project.name), el('span', 'tag', isFramework() ? 'Framework' : 'Game'));
+  // The tab shows the game's name on a game's dashboard, and the workshop's name on the workshop.
+  document.title = isFramework() ? 'Workshop' : state.project.name;
   const nav = (label, target, extra) => {
     const item = el('button', `nav${route === target ? ' on' : ''}`); item.type = 'button';
     if (extra?.icon) item.append(icon(extra.icon));
@@ -589,6 +591,18 @@ function stepItem(item) {
   return row;
 }
 
+/** One line about a finished build: how long it took, and for file outputs, how many files and their total size. */
+function buildSummary(job) {
+  const files = job.output.artifacts.filter(item => !item.directory && item.name !== 'build-report.json');
+  const seconds = job.started && job.finished ? Math.max(0, Math.round((Date.parse(job.finished) - Date.parse(job.started)) / 1000)) : undefined;
+  const parts = [];
+  if (seconds !== undefined) parts.push(`Built in ${seconds < 60 ? `${seconds} s` : `${Math.floor(seconds / 60)} min ${seconds % 60} s`}`);
+  if (files.length) {
+    const megabytes = (files.reduce((sum, item) => sum + (item.bytes ?? 0), 0) / 1048576).toFixed(1);
+    parts.push(`${files.length} ${files.length === 1 ? 'file' : 'files'}`, `${megabytes} MB in total`);
+  }
+  return parts.join(' · ');
+}
 function renderResult(platform, job) {
   const box = el('div', `result${job.status === 'succeeded' ? ' ok' : job.status === 'failed' ? ' bad' : ''}`);
   const key = `${job.action}:${platform.id}`;
@@ -597,6 +611,14 @@ function renderResult(platform, job) {
     : job.status === 'cancelled' ? 'Stopped.'
     : 'Failed. Read the output below.';
   box.append(el('p', '', text));
+  if (job.status === 'failed' && job.checks?.checks?.some(item => !item.ok && item.blocking)) {
+    box.append(el('p', 'hint', 'Fix these first, then run it again:'));
+    const list = el('ul');
+    for (const item of job.checks.checks.filter(entry => !entry.ok && entry.blocking)) list.append(el('li', '', `${item.name}: ${item.detail}`));
+    box.append(list);
+  }
+  const summary = job.status === 'succeeded' && job.output ? buildSummary(job) : '';
+  if (summary) box.append(el('p', 'hint', summary));
   const links = el('div', 'links');
   if (job.status === 'running' && job.devUrl) links.append(link('Open live game', job.devUrl));
   if (job.status === 'succeeded' && job.action === 'run' && job.profile.platform === 'web') links.append(link('Open preview', `/preview/${job.id}/`));
@@ -632,6 +654,9 @@ function renderLog(job, platformId) {
   return frag;
 }
 
+/** Release builds are only as honest as the signing behind them. Desktop release builds are not signed yet; Android release is blocked. */
+const RELEASE_LABEL = { windows: 'Release (unsigned)', macos: 'Release (unsigned)', linux: 'Release (unsigned)', android: 'Release (needs signing)' };
+
 function renderPlatform(id) {
   const isSteam = id === 'steam';
   const isTools = id === 'framework';
@@ -648,7 +673,7 @@ function renderPlatform(id) {
   head.append(title);
   if (!isSteam && !isTools && id !== 'ios') {
     const seg = el('span', 'seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Build type');
-    for (const [value, label] of [['development', 'Debug'], ['release', 'Release']]) {
+    for (const [value, label] of [['development', 'Debug'], ['release', RELEASE_LABEL[id] ?? 'Release']]) {
       const choice = button(label, () => { mode = value; draw(true); }, value === mode ? 'on' : '');
       choice.setAttribute('aria-pressed', String(value === mode)); seg.append(choice);
     }
@@ -686,6 +711,7 @@ function renderPlatform(id) {
   if (id === 'ios') view.append(iosSettingsCard());
   view.append(actions);
   if (release) view.append(el('p', 'hint', 'Android release builds need signing, which isn’t set up yet. Use a debug build for now.'));
+  if (mode === 'release' && id !== 'android' && RELEASE_LABEL[id]) view.append(el('p', 'hint', 'Release builds are not signed yet, so Windows and macOS may warn before opening them.'));
   if (job) view.append(renderResult(platform, job));
   view.append(renderLog(job, id));
   return view;

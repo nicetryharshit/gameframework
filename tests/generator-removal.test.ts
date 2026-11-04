@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 // @ts-expect-error Generator is a plain Node module.
 import { createGame, updateGame, inspectGame, addRenderer, addPhysics, removeExample, removeRenderer, removePhysics, exampleStatus, recordExample } from '../scripts/create-game.mjs';
 
@@ -76,7 +77,7 @@ test('the default example can be removed, and the game’s own copy of the gener
   assert.equal(await recordExample(e), true);
   assert.ok((await meta(e)).example.files['flappy.ts']);
   assert.equal(await recordExample(e), false, 'second record is a no-op');
-  const own = await import(path.join(e, tools, 'scripts/create-game.mjs'));
+  const own = await import(pathToFileURL(path.join(e, tools, 'scripts/create-game.mjs')).href);
   assert.equal((await own.exampleStatus(e)).removable, true);
   await own.removeExample(e);
   assert.equal(await exists(path.join(e, 'src/flappy.ts')), false);

@@ -3,6 +3,7 @@ import { access, chmod, cp, mkdir, open, readdir, readFile, rename, rm, stat, wr
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { wiringProblems } from './wiring-check.mjs';
 
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tools = 'tools/gameframework';
@@ -13,7 +14,7 @@ const COMPONENTS = [
   { id: 'renderers', label: 'Renderers', note: 'Pixi, Three and any added since', files: ['src/renderers'] },
   { id: 'physics', label: 'Physics engines', note: 'Optional physics engines the game uses', files: ['src/physics'] },
   { id: 'platform', label: 'Platform layer', note: 'Desktop and mobile hooks', files: ['src/platform'] },
-  { id: 'workshop', label: 'Workshop dashboard', note: 'This dashboard, the doctor check and the example remover', files: ['scripts/export-ui', 'scripts/doctor.mjs', 'scripts/create-game.mjs'] },
+  { id: 'workshop', label: 'Workshop dashboard', note: 'This dashboard, the doctor check and the example remover', files: ['scripts/export-ui', 'scripts/doctor.mjs', 'scripts/create-game.mjs', 'scripts/wiring-check.mjs'] },
   { id: 'docs', label: 'Docs', note: 'Framework documentation', files: ['docs'] }
 ];
 const frameworkFiles = COMPONENTS.flatMap(component => component.files);
@@ -60,6 +61,10 @@ export async function readPhysics(root) {
 }
 const aliasOf = entry => `gameframework/${entry.id}`;
 const physicsAliasOf = entry => `gameframework/physics/${entry.id}`;
+/** What the wiring check still finds after a change, phrased as notes for the dashboard's next steps. */
+async function attentionNotes(target) {
+  return (await wiringProblems(target)).map(problem => `Needs attention: ${problem}`);
+}
 
 /**
  * Config edits that map each renderer in the framework's registry. Nothing is written here: the caller applies the edits
@@ -152,6 +157,7 @@ export async function addRenderer(directory, id) {
     const notes = [...wiring.notes];
     if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
     notes.push(`Import it with: import { create${entry.id[0].toUpperCase()}${entry.id.slice(1)}Renderer } from '${aliasOf(entry)}'`);
+    notes.push(...await attentionNotes(target));
     return { renderer: id, added, notes };
   });
 }
@@ -224,6 +230,7 @@ export async function addPhysics(directory, id) {
     const notes = [...wiring.notes];
     if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
     notes.push(`Import it from '${physicsAliasOf(entry)}'.`);
+    notes.push(...await attentionNotes(target));
     return { physics: id, added, notes };
   });
 }
@@ -327,6 +334,7 @@ export async function removeRenderer(directory, id) {
     if (pkg.usedByCode.length) notes.push(`Kept ${pkg.usedByCode.join(', ')} in package.json because game code still imports it.`);
     if (pkg.dropped.length) notes.push(`Removed ${pkg.dropped.join(', ')} from package.json. Run Install dependencies to tidy node_modules.`);
     await deleteAfterCommit(target, [`${tools}/src/renderers/${entry.entry}`], notes);
+    notes.push(...await attentionNotes(target));
     return { renderer: id, removed: pkg.dropped, notes };
   });
 }
@@ -358,6 +366,7 @@ export async function removePhysics(directory, id) {
     if (pkg.usedByCode.length) notes.push(`Kept ${pkg.usedByCode.join(', ')} in package.json because game code still imports it.`);
     if (pkg.dropped.length) notes.push(`Removed ${pkg.dropped.join(', ')} from package.json. Run Install dependencies to tidy node_modules.`);
     await deleteAfterCommit(target, [`${tools}/src/physics/${entry.entry}`], notes);
+    notes.push(...await attentionNotes(target));
     return { physics: id, removed: pkg.dropped, notes };
   });
 }
@@ -480,7 +489,7 @@ const starterCode = [
   "if (app) app.textContent = 'Your game starts here.';",
   ''
 ].join('\n');
-const starterHtml = name => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/main.ts"></script></body></html>`;
+const starterHtml = name => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name.replace(/[&<>"]/g, '')}</title></head><body><div id="app"></div><script type="module" src="/src/main.ts"></script></body></html>`;
 
 /**
  * Permanently deletes the default example from a game. Refused when the game has no example, or when the game edited any
@@ -498,7 +507,7 @@ export async function removeExample(directory) {
     delete meta.example;
     const items = [
       { path: starterFile, text: starterCode },
-      { path: 'index.html', text: starterHtml(pkg.name) },
+      { path: 'index.html', text: starterHtml(path.basename(target)) },
       { path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' }
     ];
     const readme = await readFile(path.join(target, 'README.md'), 'utf8').catch(() => undefined);
@@ -709,15 +718,22 @@ export async function updateGame(directory, only, { onSwap } = {}) {
       return component.files;
     }).map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) }));
     // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
-    const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target, [...(await readRegistry(path.join(target, tools))).filter(item => item.id !== renderer?.id), ...(renderer ? [renderer] : [])]) : { notes: [], edits: [] };
-    await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
-    return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes: wiring.notes };
+    // The game's registries list only the engines it carries. Each part writes its own list, so a game with a missing list gets it back.
+    const ownRenderers = [...(await readRegistry(path.join(target, tools))).filter(item => item.id !== renderer?.id), ...(renderer ? [renderer] : [])];
+    const ownEngines = [...(await readPhysics(path.join(target, tools))).filter(item => !engines.some(engine => engine.id === item.id)), ...engines];
+    const listing = [
+      ...(chosen.some(component => component.id === 'renderers') && renderer ? [{ path: `${tools}/src/renderers/registry.json`, text: JSON.stringify({ renderers: ownRenderers }, null, 2) + '\n' }] : []),
+      ...(chosen.some(component => component.id === 'physics') ? [{ path: `${tools}/src/physics/registry.json`, text: JSON.stringify({ physics: ownEngines }, null, 2) + '\n' }] : [])
+    ];
+    // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
+    const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target, ownRenderers) : { notes: [], edits: [] };
+    await replaceItems(target, [...copies, ...listing, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
+    const notes = [...wiring.notes, ...(await attentionNotes(target))];
+    return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes };
   });
 }
 
 /** Older names for the first two renderers, so existing scripts and links keep working. */
-const legacyRenderers = { '2d': 'pixi', '3d': 'three' };
-
 /**
  * The renderer id a game was made with. Games made before this was recorded are inferred from their packages.
  */
@@ -732,7 +748,7 @@ export async function gameRenderer(gameRoot) {
 /** Creates a game with any renderer in the framework's registry. `renderer` is a registry id (or 2d / 3d). */
 export async function createGame(directory, rendererArg, physicsArg = 'none') {
   const registry = await readRegistry(source);
-  const renderer = Object.hasOwn(legacyRenderers, rendererArg) ? legacyRenderers[rendererArg] : rendererArg;
+  const renderer = rendererArg;
   const entry = registry.find(item => item.id === renderer);
   if (!directory || !entry) throw new Error(`Usage: npm run create:game -- <new-directory> <${registry.map(item => item.id).join('|')}>`);
   const target = path.resolve(directory);
@@ -774,7 +790,9 @@ export async function createGame(directory, rendererArg, physicsArg = 'none') {
   // Game code imports the framework by package-style names, which the aliases below resolve to the copied files.
   for (const file of [...demoFiles, entry.demo]) await writeFile(path.join(target, 'src', file), rewriteExample(await readFile(path.join(source, 'src', file), 'utf8')));
 
-  await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/${entry.demo}"></script></body></html>`);
+  // The page title is the folder's name as typed, so the browser tab shows the game, not its package slug.
+  const title = path.basename(target).replace(/[&<>"]/g, '');
+  await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${title}</title></head><body><div id="app"></div><script type="module" src="/src/${entry.demo}"></script></body></html>`);
   // Only the renderer and physics engine this game uses get aliases.
   const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries([entry].map(item => [`gameframework/${item.id}`, `src/renderers/${item.entry}`])), ...(physicsEntry ? { [physicsAliasOf(physicsEntry)]: `src/physics/${physicsEntry.entry}` } : {}), 'gameframework/desktop': 'src/platform/desktop.ts' };
   await writeFile(path.join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, noEmit: true, skipLibCheck: true, types: ['vite/client', 'node'], lib: ['ES2022', 'DOM'], paths: Object.fromEntries(Object.entries(aliasPaths).map(([alias, file]) => [alias, [`./${tools}/${file}`]])) }, include: ['src'] }, null, 2) + '\n');
