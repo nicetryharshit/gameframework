@@ -26,6 +26,17 @@ Developers get a playable build for every target without installing toolchains w
 - [x] Steam manual checklist (`docs/integrations/steam.md`) and the `vendor/` folder with its README.
 - [x] Storage access was already guarded in the example game (`demo.ts`, `demo-settings.ts`). No change needed there.
 
+## First game, physics and wiring (done)
+
+- [x] A game carries only its chosen renderer and physics engine. Other engines stay in the framework and can be added from Update tools, one at a time. Removing an engine is refused while game code still imports it.
+- [x] Two free, open source physics engines: Planck (`gameframework/physics/planck`) and Matter.js (`gameframework/physics/matter`). Matter loads in Node, and generated games include the selected engine's packages.
+- [x] Wiring check (`scripts/wiring-check.mjs`). It runs before a build and after an update, and checks renderer and engine files, tsconfig paths, Vite aliases, packages and imports. Blocking problems stop the build and are listed on the build page. Covered by `tests/wiring.test.ts`.
+- [x] Build page: failing checks are listed first, and a finished build shows its time, file count and total size.
+- [x] Honest release labels: desktop release builds say "unsigned", and Android release says "needs signing".
+- [x] Page titles: the workshop says "Workshop", and each game's dashboard and page use the game's name.
+- [x] Removed the `2d.html` and `3d.html` entry pages, the CI example template, `scripts/benchmark.ts` and the old `2d`/`3d` renderer names.
+- [x] `npm test` covers the generator, the wiring check, the physics adapters and the dashboard. Last full run on the developer's machine: 68 of 70 passed. Both failures are fixed in the code; a rerun is pending.
+
 ## Dashboard, first pass (done)
 
 Run with `npm run export:ui`. The page is now a set of platform cards, not a profile editor.
@@ -50,7 +61,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 - Double-click launchers on Mac and Windows, and the Node.js check they do.
 - The browser flows for New game, Open, Update tools, Add renderer and Play in browser. The rendering and the API are covered by tests, and the screens were checked in screenshots with stubbed data, but not clicked through against a real game.
 - Opening Xcode and Android Studio from the dashboard. This needs a Mac (and Android Studio installed).
-- The desktop build and the CSP on a Mac or Windows machine.
+- The Mac release build. The Mac debug build has been tested and works. On Windows, the app opens and the renderer runs after the CSP fix. Fullscreen, settings persistence and Quit are not yet checked on either platform.
 - The bundled fonts: the dashboard uses the system font stack. Geist and Lucide icons were considered but not bundled.
 
 **Next dashboard steps:**
@@ -59,7 +70,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 
 ## P0: blockers for shipping to mobile and Steam
 
-1. **Verify the desktop build on macOS and Windows.** Run `npm run build:desktop`, launch the app, and check fullscreen, settings persistence, Quit, and that the CSP does not block anything.
+1. **Verify the desktop build on macOS and Windows.** Run `npm run build:desktop`, launch the app, and check fullscreen, settings persistence, Quit, and that the CSP does not block anything. Status: the macOS debug build has been tested and works. Windows opens and the renderer runs after the CSP fix. Still to check: the release build on macOS, and fullscreen, settings and Quit on both platforms.
 2. **Build the Steam hook.** A Steamworks adapter behind a shared `PlatformService` interface, loaded only when the profile enables `steam`. Include the upload step that generates the depot script and runs SteamCMD with credentials from the environment.
 3. **Android release signing.** Keystore configuration, signed AAB output, and a documented secret-handling checklist.
 4. **iOS signing and archive.** Certificate and provisioning checklist, archive and export, and a TestFlight upload test on the developer's Mac.
@@ -71,7 +82,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 7. **Add renderer tests** for PixiJS and Three.js: mount, resize and dispose.
 8. **Add a native shell smoke test** for the Tauri shell, the `platform_kind` command and the desktop settings path.
 9. **Test on real devices**: touch, controller and fullscreen on an iPhone, an Android phone, and a Steam Deck or similar.
-10. **Reduce the 3D bundle.** The 3D chunk is 523 kB minified. Split Three.js or lazy-load the 3D demo.
+10. **Re-measure bundle size.** The old `3d.html` entry that produced the 523 kB 3D chunk has been removed. Measure again once a real game ships Three.js.
 11. **Make the doctor run the build.** Currently it checks prerequisites only. A "verified" status should come from a real build run.
 
 ## P2: polish and scale
