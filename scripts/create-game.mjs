@@ -267,10 +267,13 @@ async function restoreItems(target, work, paths) {
   }
 }
 
-/** Removes the update's folders. The commit marker goes last, so an interrupted cleanup is finished rather than undone. */
+/**
+ * Removes the update's folders. The manifest goes first. The outcome markers (committed or rolled back) go last,
+ * so an interrupted cleanup is finished rather than undone: a marker means the files are already in their final state.
+ */
 async function finishCleanup(work) {
   for (const name of ['old', 'new', 'manifest.json']) await rm(path.join(work, name), { recursive: true, force: true });
-  await rm(path.join(work, 'commit'), { force: true });
+  for (const marker of ['commit', 'rolled-back']) await rm(path.join(work, marker), { force: true });
   await rm(work, { recursive: true, force: true });
 }
 
@@ -278,10 +281,13 @@ async function finishCleanup(work) {
 async function recoverInterruptedUpdate(target) {
   const work = path.join(target, tools, '.update');
   if (!(await exists(work))) return;
-  if (await exists(path.join(work, 'commit'))) return finishCleanup(work);
+  if ((await exists(path.join(work, 'commit'))) || (await exists(path.join(work, 'rolled-back')))) return finishCleanup(work);
   const manifest = await readFile(path.join(work, 'manifest.json'), 'utf8').then(JSON.parse, () => undefined);
-  if (manifest) await restoreItems(target, work, manifest);
-  await rm(work, { recursive: true, force: true });
+  if (manifest) {
+    await restoreItems(target, work, manifest);
+    await writeDurable(path.join(work, 'rolled-back'), 'rolled-back');
+  }
+  await finishCleanup(work);
 }
 
 /**
@@ -319,9 +325,11 @@ async function replaceItems(target, items, { onSwap } = {}) {
     }
     await writeDurable(path.join(work, 'commit'), 'committed');
   } catch (error) {
-    try { await restoreItems(target, work, paths); }
-    catch (restoreError) { throw new Error(`The update failed and could not be undone. Your previous files are in ${path.join(work, 'old')}. ${restoreError.message}`); }
-    await rm(work, { recursive: true, force: true });
+    try {
+      await restoreItems(target, work, paths);
+      await writeDurable(path.join(work, 'rolled-back'), 'rolled-back');
+    } catch (restoreError) { throw new Error(`The update failed and could not be undone. Your previous files are in ${path.join(work, 'old')}. ${restoreError.message}`); }
+    await finishCleanup(work);
     throw error;
   }
   await finishCleanup(work);

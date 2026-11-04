@@ -242,6 +242,24 @@ test('a committed update that stopped during cleanup finishes without losing the
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
+test('an interrupted rollback cleanup does not remove the restored files', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-rollback-cleanup-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    const root = path.join(target, tools);
+    await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
+    // The rollback restored the files and wrote its marker, then stopped while removing the staging folders.
+    const work = path.join(root, '.update');
+    await mkdir(work, { recursive: true });
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify([`${tools}/src/framework`]));
+    await writeFile(path.join(work, 'rolled-back'), 'rolled-back');
+    await inspectGame(target);
+    assert.equal(await readFile(path.join(root, 'src/framework/index.ts'), 'utf8'), '// stale core');
+    await assert.rejects(access(work));
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
 test('adding a renderer maps it, adds only its packages, and is safe to repeat', async () => {
   const temp = await mkdtemp(path.join(tmpdir(), 'webgame-renderer-'));
   try {
