@@ -58,7 +58,14 @@ aside{border-right:1px solid var(--line);display:flex;flex-direction:column;padd
 
 main{overflow:auto;padding:28px 44px 64px}
 .wrap{max-width:860px}
-.notice{padding:10px 14px;border-radius:var(--radius);border:1px solid var(--warn);color:var(--warn);margin-bottom:18px;max-width:860px}
+/* one notification stack for the whole page, top right; newest on top */
+.toasts{position:fixed;top:20px;right:20px;z-index:1000;display:flex;flex-direction:column;gap:8px;width:min(380px,calc(100vw - 40px));pointer-events:none}
+.toast{pointer-events:auto;display:block;width:100%;text-align:left;padding:12px 16px;border-radius:var(--radius);background:var(--raise);border:1px solid var(--line);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.28);font:13px/1.45 var(--sans);animation:toast-in .22s ease-out}
+.toast:hover{border-color:var(--faint)}
+.toast.leaving{animation:toast-out .18s ease-in forwards}
+@keyframes toast-in{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes toast-out{to{opacity:0;transform:translateX(16px)}}
+@media (prefers-reduced-motion:reduce){.toast,.toast.leaving{animation:none}}
 .crumb{font:12px var(--mono);color:var(--faint);margin-bottom:14px}
 .crumb button{color:var(--muted)}.crumb button:hover{color:var(--text)}
 h1{font-size:28px;font-weight:300;letter-spacing:-.01em;line-height:1.2}

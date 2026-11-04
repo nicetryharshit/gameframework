@@ -53,7 +53,51 @@ let created = null;
 let lastUpdate = null;
 let updating = null;
 
-function say(message = '') { const box = $('#notice'); box.textContent = message; box.hidden = !message; }
+// One notification stack for the whole page, top right. Newest on top. Each message dismisses itself after a few
+// seconds, waits while hovered, and can be clicked away. A repeated message moves to the top instead of duplicating.
+const TOAST_MS = 5000;
+const TOAST_LIMIT = 4;
+const toasts = new Map(); // message -> { node, timer, hovered }
+
+function armToast(key) {
+  const entry = toasts.get(key);
+  if (!entry || entry.hovered) return;
+  clearTimeout(entry.timer);
+  entry.timer = setTimeout(() => forgetToast(key), TOAST_MS);
+}
+
+function forgetToast(key) {
+  const entry = toasts.get(key);
+  if (!entry) return;
+  clearTimeout(entry.timer);
+  toasts.delete(key);
+  entry.node.classList.add('leaving');
+  setTimeout(() => entry.node.remove(), 200); // after the exit animation; also runs when motion is reduced
+}
+
+function say(message = '') {
+  if (!message) return; // nothing to clear: messages leave the stack on their own
+  const key = String(message);
+  const stack = $('#toasts');
+  let entry = toasts.get(key);
+  if (entry) {
+    toasts.delete(key); toasts.set(key, entry);
+    entry.node.classList.remove('leaving');
+    if (stack.firstElementChild !== entry.node) stack.prepend(entry.node);
+  } else {
+    const node = el('button', 'toast', key);
+    node.type = 'button';
+    node.title = 'Click to dismiss';
+    entry = { node, timer: null, hovered: false };
+    node.addEventListener('mouseenter', () => { entry.hovered = true; clearTimeout(entry.timer); });
+    node.addEventListener('mouseleave', () => { entry.hovered = false; armToast(key); });
+    node.addEventListener('click', () => forgetToast(key));
+    toasts.set(key, entry);
+    stack.prepend(node);
+    if (toasts.size > TOAST_LIMIT) forgetToast(toasts.keys().next().value);
+  }
+  armToast(key);
+}
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
 function button(label, onClick, className = 'btn') { const node = el('button', className, label); node.type = 'button'; node.addEventListener('click', event => { event.stopPropagation(); onClick(event); }); return node; }
 function link(label, href) { const node = el('a', 'link', label); node.href = href; node.target = '_blank'; node.rel = 'noopener'; return node; }
