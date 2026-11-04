@@ -10,7 +10,7 @@ const tools = 'tools/gameframework';
 // Framework files a game needs to run, build and open the Build dashboard without this checkout.
 // Each component can be updated on its own, so a game can take new renderers without taking a new dashboard.
 const COMPONENTS = [
-  { id: 'framework', label: 'Core framework', note: 'Events, UI, state, input', files: ['src/framework'] },
+  { id: 'framework', label: 'Core framework', note: 'Events, state, UI, game loop, fixed step, input, storage, audio, pointer, viewport, lifecycle, debug, mixer, settings, assets, timers, random, animation, tweens, localization', files: ['src/framework'] },
   { id: 'renderers', label: 'Renderers', note: 'Pixi, Three and any added since', files: ['src/renderers'] },
   { id: 'physics', label: 'Physics engines', note: 'Optional physics engines the game uses', files: ['src/physics'] },
   { id: 'platform', label: 'Platform layer', note: 'Desktop and mobile hooks', files: ['src/platform'] },
