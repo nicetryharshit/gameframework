@@ -17,6 +17,7 @@
   "files": [
     "src/framework",
     "src/renderers",
+    "src/physics",
     "src/platform",
     "src-tauri/src",
     "src-tauri/icons",
@@ -86,6 +87,7 @@
     "@types/three": "^0.187.0",
     "happy-dom": "^21.0.4",
     "pixi.js": "^8.22.0",
+    "planck": "1.5.1",
     "three": "^0.187.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
