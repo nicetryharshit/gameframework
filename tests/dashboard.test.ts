@@ -96,7 +96,7 @@ test('New game offers each renderer from the registry and creates the chosen one
     const settle = () => new Promise(resolve => setTimeout(resolve, 30));
     await settle();
     const doc = window.document as unknown as Document;
-    const choices = Array.from(doc.querySelectorAll('#create-form .seg button')) as HTMLButtonElement[];
+    const choices = Array.from(doc.querySelectorAll('#create-form [aria-label="Renderer"] button')) as HTMLButtonElement[];
     assert.deepEqual(choices.map(choice => choice.textContent), ['PixiJS · 2D', 'Three.js · 3D', 'Canvas 2D · 2D']);
     assert.equal(choices[0].classList.contains('on'), true, 'the first registry renderer is the default');
 
@@ -107,7 +107,7 @@ test('New game offers each renderer from the registry and creates the chosen one
     (form.elements.namedItem('name') as HTMLInputElement).value = 'My Canvas Game';
     form.dispatchEvent(new window.Event('submit', { cancelable: true }) as unknown as Event);
     await settle();
-    assert.deepEqual(posts.find(post => post.route === '/api/create')?.body, { name: 'My Canvas Game', renderer: 'canvas' });
+    assert.deepEqual(posts.find(post => post.route === '/api/create')?.body, { name: 'My Canvas Game', renderer: 'canvas', physics: 'none' });
   } finally {
     Object.assign(globals, previous);
   }

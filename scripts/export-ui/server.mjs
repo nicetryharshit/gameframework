@@ -89,6 +89,27 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     return result;
   }
 
+  /** Adds one physics engine to a game. Only that engine is copied; the framework's others stay out of the game. */
+  async function addPhysicsTo(data) {
+    const { gameRoot } = await gameFolder(data);
+    const { addPhysics } = await generator();
+    return addPhysics(gameRoot, String(data.physics ?? ''));
+  }
+  /** Removes one renderer from a game. Refused while game code still imports it. */
+  async function removeRendererFrom(data) {
+    const { gameRoot } = await gameFolder(data);
+    const { removeRenderer } = await generator();
+    return removeRenderer(gameRoot, String(data.renderer ?? ''));
+  }
+
+  /** Removes one physics engine from a game. Refused while game code still imports it. */
+  async function removePhysicsFrom(data) {
+    const { gameRoot } = await gameFolder(data);
+    const { removePhysics } = await generator();
+    return removePhysics(gameRoot, String(data.physics ?? ''));
+  }
+
+
   /** Adds one of the framework's renderers to a game: copies it, maps the alias and lists its packages. */
   async function addRenderer(data) {
     const { gameRoot } = await gameFolder(data);
@@ -110,7 +131,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
   async function listGames() {
     if (!(await isFramework())) throw new Error('Games are listed from the framework folder.');
     const parent = path.dirname(root); const found = [];
-    const { inspectGame, frameworkVersion, gameRenderer, readRegistry, exampleStatus, recordExample } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const { inspectGame, frameworkVersion, gameRenderer, readRegistry, readPhysics, exampleStatus, recordExample } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
     const renderers = await readRegistry(root);
     for (const entry of await readdir(parent, { withFileTypes: true }).catch(() => [])) {
       if (!entry.isDirectory() || !/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
@@ -123,7 +144,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       found.push({ folder: entry.name, update, renderer, example, kind: renderers.find(item => item.id === renderer)?.kind ?? '2d', running: games.has(entry.name) });
     }
     const { version, revision } = await frameworkVersion();
-    return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision }, renderers: renderers.map(({ id, label, kind, note }) => ({ id, label, kind, note })) };
+    return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision }, renderers: renderers.map(({ id, label, kind, note }) => ({ id, label, kind, note })), physics: (await readPhysics(root)).map(({ id, label, note }) => ({ id, label, note })) };
   }
 
   async function execute(job) {
@@ -184,6 +205,8 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         if (url.pathname === '/api/open-game') return json(await openGame(data));
         if (url.pathname === '/api/update-game') return json(await updateGame(data));
         if (url.pathname === '/api/add-renderer') return json(await addRenderer(data));
+        if (url.pathname === '/api/add-physics') return json(await addPhysicsTo(data));        if (url.pathname === '/api/remove-renderer') return json(await removeRendererFrom(data));
+        if (url.pathname === '/api/remove-physics') return json(await removePhysicsFrom(data));
         if (url.pathname === '/api/remove-example') return json(await removeExampleFrom(data));
         if (url.pathname === '/api/ios-settings') {
           if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);

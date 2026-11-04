@@ -31,16 +31,20 @@
       </div>
     </form>
   </dialog>
-  <dialog id="update-dialog" aria-labelledby="update-title">
+  <dialog id="update-dialog" class="wide" aria-labelledby="update-title">
     <form id="update-form" class="dialog-form">
-      <h2 id="update-title">Update tools</h2>
-      <p class="hint" id="update-sub"></p>
-      <div id="update-list" class="pick-list"></div>
-      <h3 class="subhead">Renderers</h3>
-      <div id="renderer-list" class="pick-list"></div>
-      <p class="hint">Only the framework tools in <span class="mono">tools/gameframework</span> change. Your game code, <span class="mono">src-tauri</span>, profiles and builds are never touched.</p>
-      <p class="hint error" id="update-error" hidden></p>
-      <div class="row-actions">
+      <div class="dialog-body">
+        <h2 id="update-title">Update tools</h2>
+        <p class="hint" id="update-sub"></p>
+        <div id="update-list" class="pick-list"></div>
+        <h3 class="subhead">Renderers</h3>
+        <div id="renderer-list" class="pick-list"></div>
+        <h3 class="subhead">Physics engines</h3>
+        <div id="physics-list" class="pick-list"></div>
+        <p class="hint">Only the framework tools in <span class="mono">tools/gameframework</span> change. Your game code, <span class="mono">src-tauri</span>, profiles and builds are never touched.</p>
+        <p class="hint error" id="update-error" hidden></p>
+      </div>
+      <div class="dialog-foot">
         <button type="submit" class="btn primary">Update selected</button>
         <button type="button" class="btn" id="cancel-update">Cancel</button>
       </div>

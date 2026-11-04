@@ -1,6 +1,7 @@
 {
   "physics": [
     { "id": "none", "label": "None", "kind": "2d", "default": true, "note": "No physics. Games that need collision only (like Pocket Flight) keep their own rules.", "packages": [] },
-    { "id": "planck", "label": "Planck.js", "kind": "2d", "entry": "planck.ts", "note": "Box2D-style 2D rigid bodies. Pure JavaScript, MIT.", "packages": ["planck"] }
+    { "id": "planck", "label": "Planck", "kind": "2d", "entry": "planck.ts", "note": "Box2D-style 2D rigid bodies. Pure JavaScript, MIT.", "packages": ["planck"] },
+    { "id": "matter", "label": "Matter.js", "kind": "2d", "entry": "matter.ts", "note": "Simple 2D bodies in pixels and seconds. Pure JavaScript, MIT.", "packages": ["matter-js"], "devPackages": ["@types/matter-js"] }
   ]
 }

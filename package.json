@@ -7,6 +7,9 @@
     "game-export-ui": "./scripts/export-ui/server.mjs"
   },
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "exports": {
     ".": "./src/framework/index.ts",
     "./pixi": "./src/renderers/pixi.ts",
@@ -83,9 +86,11 @@
   "devDependencies": {
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/cli": "^2.12.4",
+    "@types/matter-js": "0.20.2",
     "@types/node": "^22.0.0",
     "@types/three": "^0.187.0",
     "happy-dom": "^21.0.4",
+    "matter-js": "0.20.0",
     "pixi.js": "^8.22.0",
     "planck": "1.5.1",
     "three": "^0.187.0",

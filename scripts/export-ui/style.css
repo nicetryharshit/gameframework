@@ -108,6 +108,7 @@ tbody tr.click td:first-child{padding-left:8px}
 .st{display:inline-flex;align-items:center;gap:9px;white-space:nowrap}
 .right{text-align:right;padding-right:8px;white-space:nowrap}
 .actions-cell{white-space:nowrap}
+.row-buttons{display:inline-flex;align-items:center;justify-content:flex-end;gap:8px}
 .empty{padding:22px 8px;color:var(--muted)}
 
 .form{display:grid;gap:14px;padding-top:6px}
@@ -149,6 +150,11 @@ dialog{margin:auto;background:var(--ground);color:var(--text);border:1px solid v
 dialog::backdrop{background:rgba(0,0,0,.5)}
 .dialog-form{padding:24px;display:grid;gap:14px}
 .dialog-form h2{font-size:20px;font-weight:300}
+/* A wide panel whose header and footer stay in place while only the middle scrolls. */
+dialog.wide{width:min(760px,94vw);overflow:hidden;display:flex;flex-direction:column}
+dialog.wide .dialog-form{display:flex;flex-direction:column;flex:1;min-height:0;padding:0;gap:0}
+dialog.wide .dialog-body{display:grid;gap:14px;padding:24px;overflow-y:auto;min-height:0;flex:1}
+dialog.wide .dialog-foot{display:flex;gap:10px;flex:none;padding:16px 24px;border-top:1px solid var(--line);background:var(--ground)}
 .row-actions{display:flex;gap:10px}
 .pick-list{display:grid}
 .pick{display:flex!important;align-items:center;gap:12px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:14px;color:var(--text);cursor:pointer}

@@ -25,12 +25,15 @@ test('generated games carry their own framework tools and no link back to this c
       assert.equal(pkg.scripts.doctor, `node ${tools}/scripts/doctor.mjs`);
       assert.equal(pkg.scripts.workshop, `node ${tools}/scripts/export-ui/server.mjs --open`);
       assert.ok(pkg.scripts['build:desktop'] && pkg.scripts['build:web'] && pkg.scripts['open:ios'] && pkg.scripts['open:android']);
-      for (const file of ['src/framework/index.ts', 'src/renderers/pixi.ts', 'src/platform/desktop.ts', 'scripts/export-ui/server.mjs', 'scripts/doctor.mjs', 'docs/FRAMEWORK.md', 'VERSION.json']) {
+      for (const file of ['src/framework/index.ts', `src/renderers/${renderer}.ts`, 'src/platform/desktop.ts', 'scripts/export-ui/server.mjs', 'scripts/doctor.mjs', 'docs/FRAMEWORK.md', 'VERSION.json']) {
         await access(path.join(target, tools, file));
+      }
+      for (const other of ['pixi', 'three', 'canvas'].filter(item => item !== renderer)) {
+        await assert.rejects(access(path.join(target, tools, 'src/renderers', `${other}.ts`)), `${other} should not be copied into a ${renderer} game`);
       }
       assert.match(await readFile(path.join(target, 'vite.config.ts'), 'utf8'), /gameframework\/desktop/);
       const tsconfig = JSON.parse(await readFile(path.join(target, 'tsconfig.json'), 'utf8'));
-      assert.equal(tsconfig.compilerOptions.paths['gameframework/pixi'][0], `./${tools}/src/renderers/pixi.ts`);
+      assert.equal(tsconfig.compilerOptions.paths[`gameframework/${renderer}`][0], `./${tools}/src/renderers/${renderer}.ts`);
       const demo = ({ pixi: 'demo-2d.ts', three: 'demo-3d.ts', canvas: 'demo-canvas.ts' } as Record<string, string>)[renderer];
       assert.match(await readFile(path.join(target, 'src', demo), 'utf8'), /gameframework\/(pixi|three|canvas)/);
       assert.match(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), /class FlappyGame/);
@@ -56,7 +59,7 @@ test('updating a game refreshes its tools and leaves its own files alone', async
     await writeFile(path.join(target, 'src', 'flappy.ts'), '// my game code');
     await writeFile(path.join(target, 'export-profiles.json'), '{"mine":true}');
     const status = async () => Object.fromEntries((await inspectGame(target)).components.map((item: { id: string; status: string }) => [item.id, item.status]));
-    assert.deepEqual(await status(), { framework: 'current', renderers: 'current', platform: 'current', workshop: 'modified', docs: 'current' });
+    assert.deepEqual(await status(), { framework: 'current', renderers: 'current', physics: 'current', platform: 'current', workshop: 'modified', docs: 'current' });
     const stale = await inspectGame(target);
     assert.equal(stale.outdated, true);
     // A partial update only touches the chosen part.
@@ -70,11 +73,12 @@ test('updating a game refreshes its tools and leaves its own files alone', async
     await assert.rejects(updateGame(target, ['nope']), /Unknown part/);
     const full = await updateGame(target);
     assert.equal((await inspectGame(target)).outdated, false);
-    assert.ok(full.updated.length === 5);
+    assert.equal(full.updated.length, 6, "every part, including physics, is refreshed");
     await writeFile(path.join(target, tools, 'src/renderers/extra.ts'), '// new renderer');
     const withNote = await updateGame(target, ['renderers']);
     assert.deepEqual(withNote.notes, []);
-    assert.equal(await readFile(path.join(target, tools, 'src/renderers/extra.ts'), 'utf8').catch(() => 'gone'), 'gone');
+    // The update refreshes the game's own renderer; an extra file the user put there is not framework-owned, so it stays.
+    assert.equal(await readFile(path.join(target, tools, 'src/renderers/extra.ts'), 'utf8'), '// new renderer');
     assert.equal(await readFile(ui, 'utf8'), original);
     assert.equal(await readFile(path.join(target, 'src', 'flappy.ts'), 'utf8'), '// my game code');
     assert.equal(await readFile(path.join(target, 'export-profiles.json'), 'utf8'), '{"mine":true}');
@@ -268,8 +272,8 @@ test('adding a renderer maps it, adds only its packages, and is safe to repeat',
     const target = path.join(temp, 'game');
     await createGame(target, '2d');
     const states = async () => Object.fromEntries((await inspectGame(target)).renderers.map((item: { id: string; status: string }) => [item.id, item.status]));
-    // Canvas needs no packages and every new game maps it, so it is ready from the start.
-    assert.deepEqual(await states(), { pixi: 'ready', three: 'available', canvas: 'ready' });
+    // A new game maps only its own renderer. Canvas needs no packages, so it is ready as soon as it is added.
+    assert.deepEqual(await states(), { pixi: 'ready', three: 'available', canvas: 'available' });
 
     // Adding a renderer that has no packages leaves package.json as it was.
     const before = await readFile(path.join(target, 'package.json'), 'utf8');
@@ -297,15 +301,17 @@ test('adding a renderer maps it, adds only its packages, and is safe to repeat',
     const old = path.join(temp, 'old');
     await createGame(old, '2d');
     await rm(path.join(old, tools, 'src/renderers/registry.json'));
-    await rm(path.join(old, tools, 'src/renderers/canvas.ts'));
+    await rm(path.join(old, tools, 'src/renderers/canvas.ts'), { force: true }); // a subset game never had it
     const tsFile = path.join(old, 'tsconfig.json');
     const ts = JSON.parse(await readFile(tsFile, 'utf8')); delete ts.compilerOptions.paths['gameframework/canvas'];
     await writeFile(tsFile, JSON.stringify(ts));
     await writeFile(path.join(old, 'vite.config.ts'), (await readFile(path.join(old, 'vite.config.ts'), 'utf8')).replace(/.*gameframework\/canvas.*\n/, ''));
     const update = await updateGame(old, ['renderers']);
     assert.deepEqual(update.notes, []);
-    assert.ok(JSON.parse(await readFile(tsFile, 'utf8')).compilerOptions.paths['gameframework/canvas']);
-    assert.match(await readFile(path.join(old, 'vite.config.ts'), 'utf8'), /gameframework\/canvas/);
+    // An update refreshes the game's own renderer only, so canvas stays unmapped until it is added.
+    assert.ok(JSON.parse(await readFile(tsFile, 'utf8')).compilerOptions.paths['gameframework/pixi']);
+    assert.equal(JSON.parse(await readFile(tsFile, 'utf8')).compilerOptions.paths['gameframework/canvas'], undefined);
+    assert.doesNotMatch(await readFile(path.join(old, 'vite.config.ts'), 'utf8'), /gameframework\/canvas/);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 
@@ -317,6 +323,8 @@ test('generated games type-check and build using only their copied tools', async
       await createGame(target, renderer);
       // Reuse this checkout's installed packages so the test does not download dependencies again.
       await symlink(path.join(checkout, 'node_modules'), path.join(target, 'node_modules'), 'junction');
+      // Games carry only the renderer they were made with, so add canvas before a file imports it.
+      if (renderer !== 'canvas') await addRenderer(target, 'canvas');
       // A game that imports the dependency-free renderer must resolve and bundle it too.
       await writeFile(path.join(target, 'src', 'canvas-check.ts'), "import { createCanvasRenderer } from 'gameframework/canvas';\nexport const make = (el: HTMLElement) => createCanvasRenderer(el, { background: '#000' });\n");
       execFileSync(process.execPath, [path.join(target, 'node_modules', 'typescript', 'bin', 'tsc'), '--noEmit'], { cwd: target, stdio: 'pipe' });

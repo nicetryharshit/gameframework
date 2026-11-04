@@ -8,7 +8,7 @@ const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tools = 'tools/gameframework';
 // Framework files a game needs to run, build and open the Build dashboard without this checkout.
 // Each component can be updated on its own, so a game can take new renderers without taking a new dashboard.
-export const COMPONENTS = [
+const COMPONENTS = [
   { id: 'framework', label: 'Core framework', note: 'Events, UI, state, input', files: ['src/framework'] },
   { id: 'renderers', label: 'Renderers', note: 'Pixi, Three and any added since', files: ['src/renderers'] },
   { id: 'physics', label: 'Physics engines', note: 'Optional physics engines the game uses', files: ['src/physics'] },
@@ -35,7 +35,7 @@ async function walk(file, relative, out) {
   } else out.push([relative, file]);
 }
 /** A content hash of a component's files under a root, or undefined when none exist. */
-export async function hashComponent(root, component) {
+async function hashComponent(root, component) {
   const found = [];
   for (const item of component.files) await walk(path.join(root, item), item, found);
   if (!found.length) return undefined;
@@ -59,15 +59,16 @@ export async function readPhysics(root) {
   return JSON.parse(text).physics;
 }
 const aliasOf = entry => `gameframework/${entry.id}`;
+const physicsAliasOf = entry => `gameframework/physics/${entry.id}`;
 
 /**
  * Config edits that map each renderer in the framework's registry. Nothing is written here: the caller applies the edits
  * with the update, so a failure undoes them. Malformed JSON throws before anything in the game changes.
  */
-async function planRendererWiring(target) {
+/** `registry` is the renderers this game will have once the update lands, so only those get aliases. */
+async function planRendererWiring(target, registry) {
   const notes = [];
   const edits = [];
-  const registry = await readRegistry(source);
   const tsFile = path.join(target, 'tsconfig.json');
   const tsconfig = JSON.parse(await readFile(tsFile, 'utf8').catch(() => 'null'));
   if (!tsconfig?.compilerOptions) notes.push('tsconfig.json was not found or has no compilerOptions. Add the renderer paths by hand.');
@@ -105,7 +106,7 @@ async function rendererStates(target) {
     const needs = [...entry.packages, ...(entry.devPackages ?? [])];
     const installed = needs.every(name => have[name]);
     const wired = !!mapped[aliasOf(entry)] && copied.some(item => item.id === entry.id);
-    return { id: entry.id, label: entry.label, kind: entry.kind, note: entry.note, status: wired && installed ? 'ready' : 'available' };
+    return { id: entry.id, label: entry.label, kind: entry.kind, note: entry.note, status: wired && installed ? 'ready' : 'available', copied: copied.some(item => item.id === entry.id) };
   });
 }
 
@@ -130,7 +131,7 @@ export async function addRenderer(directory, id) {
       items.push({ path: `${tools}/src/renderers/registry.json`, text: JSON.stringify({ renderers: [...copied.filter(item => item.id !== id), entry] }, null, 2) + '\n' });
       items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
     }
-    const wiring = await planRendererWiring(target);
+    const wiring = await planRendererWiring(target, [...copied.filter(item => item.id !== id), entry]);
     const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
     const pkgFile = path.join(target, 'package.json');
     const pkg = JSON.parse(await readFile(pkgFile, 'utf8'));
@@ -154,6 +155,213 @@ export async function addRenderer(directory, id) {
     return { renderer: id, added, notes };
   });
 }
+
+/** Each physics engine with this game's state: added (its adapter and packages are in the game) or available to add. */
+async function physicsStates(target) {
+  const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => '{}'));
+  const have = Array.isArray(meta.physics) ? meta.physics : [];
+  return (await readPhysics(source)).filter(entry => entry.entry).map(entry => ({ id: entry.id, label: entry.label, note: entry.note, status: have.includes(entry.id) ? 'ready' : 'available', copied: have.includes(entry.id) }));
+}
+
+/** Config edits that map one physics engine's alias to its adapter. Applied with the update, like the renderer wiring. */
+async function planPhysicsWiring(target, entry) {
+  const notes = []; const edits = [];
+  const alias = physicsAliasOf(entry); const file = `src/physics/${entry.entry}`;
+  const tsconfig = JSON.parse(await readFile(path.join(target, 'tsconfig.json'), 'utf8').catch(() => 'null'));
+  if (!tsconfig?.compilerOptions) notes.push(`Add the path ${alias} to tsconfig.json by hand.`);
+  else {
+    const paths = tsconfig.compilerOptions.paths ??= {};
+    if (!paths[alias]) { paths[alias] = [`./${tools}/${file}`]; edits.push({ path: 'tsconfig.json', text: JSON.stringify(tsconfig, null, 2) + '\n' }); }
+  }
+  const vite = await readFile(path.join(target, 'vite.config.ts'), 'utf8').catch(() => undefined);
+  if (vite === undefined) notes.push(`Add ${alias} to vite.config.ts by hand.`);
+  else if (!vite.includes(`'${alias}'`)) {
+    const marker = /^(\s*)alias:\s*\[\s*$/m.exec(vite);
+    if (!marker) notes.push(`Add { find: '${alias}', replacement: framework('${file}') } to resolve.alias in vite.config.ts.`);
+    else edits.push({ path: 'vite.config.ts', text: vite.replace(marker[0], `${marker[0]}\n${marker[1]}  { find: '${alias}', replacement: framework('${file}') },`) });
+  }
+  return { notes, edits };
+}
+
+/**
+ * Adds one physics engine to a game, all or nothing: copies its adapter, records it, wires its alias and adds its packages
+ * to package.json. Only that engine is copied. It does not run npm; Install dependencies does.
+ */
+export async function addPhysics(directory, id) {
+  return lockedGame(directory, async target => {
+    await statusOf(target);
+    const entry = (await readPhysics(source)).find(item => item.id === id);
+    if (!entry) throw new Error(`Unknown physics engine: ${id}`);
+    if (!entry.entry) throw new Error('Choose a physics engine. "None" has nothing to add.');
+    const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8'));
+    const have = Array.isArray(meta.physics) ? meta.physics : [];
+    if (have.includes(id)) throw new Error(`${entry.label} is already in this game.`);
+    const current = JSON.parse(await readFile(path.join(target, tools, 'src/physics/registry.json'), 'utf8').catch(() => '{"physics":[]}')).physics ?? [];
+    const items = [
+      { path: `${tools}/src/physics/${entry.entry}`, from: path.join(source, 'src/physics', entry.entry) },
+      { path: `${tools}/src/physics/registry.json`, text: JSON.stringify({ physics: [...current.filter(item => item.id !== id), entry] }, null, 2) + '\n' }
+    ];
+    const wiring = await planPhysicsWiring(target, entry);
+    const own = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+    const added = [];
+    for (const [list, field] of [[entry.packages, 'dependencies'], [entry.devPackages ?? [], 'devDependencies']]) {
+      for (const name of list) {
+        const version = own.dependencies?.[name] ?? own.devDependencies?.[name];
+        if (!version) throw new Error(`The framework does not list a version for ${name}.`);
+        if (pkg.dependencies?.[name] || pkg.devDependencies?.[name]) continue;
+        (pkg[field] ??= {})[name] = version; added.push(name);
+      }
+    }
+    if (added.length) {
+      for (const field of ['dependencies', 'devDependencies']) if (pkg[field]) pkg[field] = Object.fromEntries(Object.entries(pkg[field]).sort(([a], [b]) => a.localeCompare(b)));
+      items.push({ path: 'package.json', text: JSON.stringify(pkg, null, 2) + '\n' });
+    }
+    meta.physics = [...have, id];
+    meta.components = { ...meta.components, physics: (await frameworkVersion()).hashes.physics };
+    items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
+    await replaceItems(target, [...items, ...wiring.edits]);
+    const notes = [...wiring.notes];
+    if (added.length) notes.push(`Added ${added.join(', ')} to package.json. Run Install dependencies in the game before using it.`);
+    notes.push(`Import it from '${physicsAliasOf(entry)}'.`);
+    return { physics: id, added, notes };
+  });
+}
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Game source files whose text matches one of the patterns. Only the game's own src folder counts, not the framework copy. */
+async function importersOf(target, patterns) {
+  const found = [];
+  const walk = async dir => {
+    for (const item of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      const file = path.join(dir, item.name);
+      if (item.isDirectory()) await walk(file);
+      else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(item.name)) {
+        const text = await readFile(file, 'utf8').catch(() => '');
+        if (patterns.some(pattern => pattern.test(text))) found.push(path.relative(target, file).replaceAll('\\', '/'));
+      }
+    }
+  };
+  await walk(path.join(target, 'src'));
+  return found;
+}
+
+function importedBlocker(users, label) {
+  return new Error(`Not removed. ${users.join(', ')} ${users.length === 1 ? 'still imports' : 'still import'} ${label}. Change those imports first, then try again.`);
+}
+
+/** Config edits that remove one engine's alias from tsconfig.json and vite.config.ts. Applied with the update, like the wiring. */
+async function planRemoveWiring(target, alias) {
+  const notes = []; const edits = [];
+  const tsconfig = JSON.parse(await readFile(path.join(target, 'tsconfig.json'), 'utf8').catch(() => 'null'));
+  if (tsconfig?.compilerOptions?.paths?.[alias]) {
+    delete tsconfig.compilerOptions.paths[alias];
+    edits.push({ path: 'tsconfig.json', text: JSON.stringify(tsconfig, null, 2) + '\n' });
+  }
+  const vite = await readFile(path.join(target, 'vite.config.ts'), 'utf8').catch(() => undefined);
+  if (vite?.includes(`'${alias}'`)) {
+    const line = new RegExp(`^[ \\t]*\\{ find: '${escapeRegExp(alias)}',.*\\},?[ \\t]*\\r?\\n`, 'm');
+    if (line.test(vite)) edits.push({ path: 'vite.config.ts', text: vite.replace(line, '') });
+    else notes.push(`Remove the ${alias} alias from vite.config.ts by hand.`);
+  }
+  return { notes, edits };
+}
+
+/** Packages to drop from package.json: the engine's own, unless another kept engine or game code still needs them. */
+async function dropPackages(target, entry, keep) {
+  const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+  const needed = new Set(keep.flatMap(item => [...item.packages, ...(item.devPackages ?? [])]));
+  const dropped = []; const usedByCode = [];
+  for (const name of [...entry.packages, ...(entry.devPackages ?? [])]) {
+    if (needed.has(name)) continue;
+    if ((await importersOf(target, [new RegExp(`['"]${escapeRegExp(name)}(/[^'"]*)?['"]`)])).length) { usedByCode.push(name); continue; }
+    let hit = false;
+    for (const field of ['dependencies', 'devDependencies']) if (pkg[field]?.[name]) { delete pkg[field][name]; hit = true; }
+    if (hit) dropped.push(name);
+  }
+  return { pkg, dropped, usedByCode };
+}
+
+/** package.json text with its dependency lists sorted, the way the framework writes them. */
+function packageText(pkg) {
+  for (const field of ['dependencies', 'devDependencies']) if (pkg[field]) pkg[field] = Object.fromEntries(Object.entries(pkg[field]).sort(([a], [b]) => a.localeCompare(b)));
+  return JSON.stringify(pkg, null, 2) + '\n';
+}
+
+/** The physics engines copied into this game (not the framework's full list). */
+async function copiedPhysics(target) {
+  return (await readPhysics(path.join(target, tools))).filter(entry => entry.entry);
+}
+
+/** Deletes files after the update has committed. The config no longer points at them, so a failure is reported, not undone. */
+async function deleteAfterCommit(target, files, notes) {
+  for (const file of files) {
+    try { await rm(path.join(target, file), { force: true }); }
+    catch (error) { notes.push(`Could not delete ${file.replaceAll('\\', '/')}: ${error.message}. Delete it by hand.`); }
+  }
+}
+
+/**
+ * Removes one renderer from a game, all or nothing: its registry entry, alias and any packages nothing else needs.
+ * Refused while game code still imports it, and a game always keeps at least one renderer.
+ */
+export async function removeRenderer(directory, id) {
+  return lockedGame(directory, async target => {
+    const copied = await readRegistry(path.join(target, tools));
+    const entry = copied.find(item => item.id === id);
+    if (!entry) throw new Error(`${id} is not in this game.`);
+    const rest = copied.filter(item => item.id !== id);
+    if (!rest.length) throw new Error(`${entry.label} is this game's only renderer. Add another renderer before removing it.`);
+    const stem = entry.entry.replace(/\.ts$/, '');
+    const users = await importersOf(target, [new RegExp(`['"]${escapeRegExp(aliasOf(entry))}['"]`), new RegExp(`renderers/${escapeRegExp(stem)}['"]`)]);
+    if (users.length) throw importedBlocker(users, entry.label);
+    const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8'));
+    const pkg = await dropPackages(target, entry, [...rest, ...(await copiedPhysics(target))]);
+    const items = [{ path: `${tools}/src/renderers/registry.json`, text: JSON.stringify({ renderers: rest }, null, 2) + '\n' }];
+    if (meta.renderer === id) meta.renderer = rest[0].id;
+    items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
+    if (pkg.dropped.length) items.push({ path: 'package.json', text: packageText(pkg.pkg) });
+    const wiring = await planRemoveWiring(target, aliasOf(entry));
+    await replaceItems(target, [...items, ...wiring.edits]);
+    const notes = [...wiring.notes];
+    if (pkg.usedByCode.length) notes.push(`Kept ${pkg.usedByCode.join(', ')} in package.json because game code still imports it.`);
+    if (pkg.dropped.length) notes.push(`Removed ${pkg.dropped.join(', ')} from package.json. Run Install dependencies to tidy node_modules.`);
+    await deleteAfterCommit(target, [`${tools}/src/renderers/${entry.entry}`], notes);
+    return { renderer: id, removed: pkg.dropped, notes };
+  });
+}
+
+/**
+ * Removes one physics engine from a game, all or nothing: its adapter registration, alias and any packages nothing else needs.
+ * Refused while game code still imports it.
+ */
+export async function removePhysics(directory, id) {
+  return lockedGame(directory, async target => {
+    const copied = await copiedPhysics(target);
+    const entry = copied.find(item => item.id === id);
+    if (!entry) throw new Error(`${id} is not in this game.`);
+    const stem = entry.entry.replace(/\.ts$/, '');
+    const users = await importersOf(target, [new RegExp(`['"]${escapeRegExp(physicsAliasOf(entry))}['"]`), new RegExp(`physics/${escapeRegExp(stem)}['"]`)]);
+    if (users.length) throw importedBlocker(users, entry.label);
+    const rest = copied.filter(item => item.id !== id);
+    const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8'));
+    meta.physics = (Array.isArray(meta.physics) ? meta.physics : []).filter(item => item !== id);
+    const pkg = await dropPackages(target, entry, [...(await readRegistry(path.join(target, tools))), ...rest]);
+    const items = [
+      { path: `${tools}/src/physics/registry.json`, text: JSON.stringify({ physics: rest }, null, 2) + '\n' },
+      { path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' }
+    ];
+    if (pkg.dropped.length) items.push({ path: 'package.json', text: packageText(pkg.pkg) });
+    const wiring = await planRemoveWiring(target, physicsAliasOf(entry));
+    await replaceItems(target, [...items, ...wiring.edits]);
+    const notes = [...wiring.notes];
+    if (pkg.usedByCode.length) notes.push(`Kept ${pkg.usedByCode.join(', ')} in package.json because game code still imports it.`);
+    if (pkg.dropped.length) notes.push(`Removed ${pkg.dropped.join(', ')} from package.json. Run Install dependencies to tidy node_modules.`);
+    await deleteAfterCommit(target, [`${tools}/src/physics/${entry.entry}`], notes);
+    return { physics: id, removed: pkg.dropped, notes };
+  });
+}
+
 
 /** The framework's own version and revision, shown next to each game's. */
 export async function frameworkVersion() {
@@ -197,13 +405,13 @@ async function statusOf(target) {
     const status = partial[component.id] !== undefined ? (partial[component.id] ? 'current' : 'outdated') : !have ? 'missing' : have === want ? 'current' : recorded && have !== recorded ? 'modified' : 'outdated';
     return { id: component.id, label: component.label, note: component.note, status };
   });
-  return { version: meta.version, revision: revisionOf(mine), renderers: await rendererStates(target), framework: { version: framework.version, revision: framework.revision }, components, outdated: components.some(item => item.status !== 'current') };
+  return { version: meta.version, revision: revisionOf(mine), renderers: await rendererStates(target), physics: await physicsStates(target), framework: { version: framework.version, revision: framework.revision }, components, outdated: components.some(item => item.status !== 'current') };
 }
 const demoFiles = ['flappy.ts', 'demo.ts', 'demo-settings.ts', 'demo.css'];
 const digest = text => createHash('sha256').update(text).digest('hex');
 
 /** Game code imports the framework by package-style names, which the game's aliases resolve to the copied files. */
-export function rewriteExample(text) {
+function rewriteExample(text) {
   return text.replaceAll("from './framework'", "from 'gameframework'").replace(/from '\.\/renderers\/([a-z0-9-]+)'/g, "from 'gameframework/$1'").replaceAll("from './platform/desktop'", "from 'gameframework/desktop'");
 }
 
@@ -307,7 +515,7 @@ export async function removeExample(directory) {
 }
 
 /** Double-click launchers for the Game Workshop dashboard. serverPath is relative to the project folder. */
-export async function writeLaunchers(directory, serverPath) {
+async function writeLaunchers(directory, serverPath) {
   const posix = serverPath.replaceAll('\\', '/');
   const windows = serverPath.replaceAll('/', '\\');
   const nodeCheck = (open, downloadPage) => [
@@ -501,7 +709,7 @@ export async function updateGame(directory, only, { onSwap } = {}) {
       return component.files;
     }).map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) }));
     // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
-    const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
+    const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target, [...(await readRegistry(path.join(target, tools))).filter(item => item.id !== renderer?.id), ...(renderer ? [renderer] : [])]) : { notes: [], edits: [] };
     await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
     return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes: wiring.notes };
   });
@@ -557,15 +765,18 @@ export async function createGame(directory, rendererArg, physicsArg = 'none') {
     'export:ui': `node ${tools}/scripts/export-ui/server.mjs`,
     workshop: `node ${tools}/scripts/export-ui/server.mjs --open`
   });
-  const dependencies = Object.fromEntries(['@tauri-apps/api', ...entry.packages].map(key => [key, own.devDependencies[key]]));
-  const devDependencies = Object.fromEntries(['vite', 'typescript', '@types/node', '@tauri-apps/cli', ...(entry.devPackages ?? [])].map(key => [key, own.devDependencies[key]]));
+  const engines = [entry, ...(physicsEntry ? [physicsEntry] : [])]; // the renderer and the physics engine this game uses
+  const versionOf = key => own.dependencies?.[key] ?? own.devDependencies?.[key];
+  const dependencies = Object.fromEntries(['@tauri-apps/api', ...engines.flatMap(item => item.packages)].map(key => [key, versionOf(key)]));
+  const devDependencies = Object.fromEntries(['vite', 'typescript', '@types/node', '@tauri-apps/cli', ...engines.flatMap(item => item.devPackages ?? [])].map(key => [key, versionOf(key)]));
   await writeFile(path.join(target, 'package.json'), JSON.stringify({ name, version: '0.1.0', private: true, type: 'module', scripts, dependencies, devDependencies }, null, 2) + '\n');
 
   // Game code imports the framework by package-style names, which the aliases below resolve to the copied files.
   for (const file of [...demoFiles, entry.demo]) await writeFile(path.join(target, 'src', file), rewriteExample(await readFile(path.join(source, 'src', file), 'utf8')));
 
   await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/${entry.demo}"></script></body></html>`);
-  const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries(registry.map(item => [`gameframework/${item.id}`, `src/renderers/${item.entry}`])), 'gameframework/desktop': 'src/platform/desktop.ts' };
+  // Only the renderer and physics engine this game uses get aliases.
+  const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries([entry].map(item => [`gameframework/${item.id}`, `src/renderers/${item.entry}`])), ...(physicsEntry ? { [physicsAliasOf(physicsEntry)]: `src/physics/${physicsEntry.entry}` } : {}), 'gameframework/desktop': 'src/platform/desktop.ts' };
   await writeFile(path.join(target, 'tsconfig.json'), JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', moduleResolution: 'Bundler', strict: true, noEmit: true, skipLibCheck: true, types: ['vite/client', 'node'], lib: ['ES2022', 'DOM'], paths: Object.fromEntries(Object.entries(aliasPaths).map(([alias, file]) => [alias, [`./${tools}/${file}`]])) }, include: ['src'] }, null, 2) + '\n');
   const viteConfig = [
     "import { fileURLToPath } from 'node:url';",

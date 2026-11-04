@@ -224,6 +224,7 @@ function makeCreateForm() {
   form.id = 'create-form';
   form.innerHTML = `<label>Folder name<input name="name" required maxlength="40" value="my-game" autocomplete="off"></label>
     <div class="field"><span>Renderer</span><span class="seg" role="group" aria-label="Renderer"></span></div>
+    <div class="field"><span>Physics</span><span class="seg" role="group" aria-label="Physics" data-physics></span></div>
     <span class="mono muted small" data-preview></span>
     <button type="submit" class="btn primary">Create game</button>`;
   const group = form.querySelector('.seg');
@@ -234,6 +235,20 @@ function makeCreateForm() {
     group.append(choice);
   });
   form.dataset.renderer = choices[0]?.id ?? '';
+  // Physics is optional: "None" is the default, and each engine is copied only if chosen.
+  const physicsGroup = form.querySelector('[data-physics]');
+  // The registry's own "none" entry is dropped here: the form already offers None first.
+  const physicsChoices = [{ id: 'none', label: 'None', note: 'No physics engine' }, ...(games?.physics ?? []).filter(item => item.id !== 'none')];
+  for (const item of physicsChoices) {
+    const choice = el('button', item.id === 'none' ? 'on' : '', item.label);
+    choice.type = 'button'; choice.title = item.note ?? ''; choice.dataset.p = item.id;
+    physicsGroup.append(choice);
+  }
+  form.dataset.physics = 'none';
+  for (const choice of physicsGroup.querySelectorAll('button')) choice.addEventListener('click', () => {
+    form.dataset.physics = choice.dataset.p;
+    for (const other of physicsGroup.querySelectorAll('button')) other.classList.toggle('on', other === choice);
+  });
   const sync = () => {
     const slug = form.elements.name.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     form.querySelector('[data-preview]').textContent = slug ? `Creates ../${slug}` : 'Use letters or numbers';
@@ -246,7 +261,7 @@ function makeCreateForm() {
   form.addEventListener('submit', async event => {
     event.preventDefault();
     try {
-      const { folder } = await api('create', { name: form.elements.name.value, renderer: form.dataset.renderer });
+      const { folder } = await api('create', { name: form.elements.name.value, renderer: form.dataset.renderer, physics: form.dataset.physics });
       await api('open-game', { folder });
       say(`Created ${folder}. Its dashboard is opening in your browser.`);
       await loadGames(); draw(true);
@@ -273,8 +288,53 @@ function openUpdate(game) {
     row.append(box, text, chip); list.append(row);
   }
   renderRendererList();
+  renderPhysicsList();
   $('#update-error').hidden = true;
   $('#update-dialog').showModal();
+}
+
+function renderPhysicsList() {
+  const list = $('#physics-list'); list.replaceChildren();
+  for (const item of updating.update.physics ?? []) {
+    const row = el('div', 'pick');
+    const text = el('span', 't'); text.append(el('span', '', item.label), el('small', '', item.note));
+    row.append(text);
+    if (item.copied) row.append(el('span', 'chip ok', 'In this game'), button('Remove', () => removePhysicsEngine(item), 'btn sm danger'));
+    else row.append(button('Add', () => addPhysicsEngine(item.id), 'btn sm'));
+    list.append(row);
+  }
+}
+
+async function addPhysicsEngine(id) {
+  try {
+    const result = await api('add-physics', { folder: updating.folder, physics: id });
+    updateNotes = result.notes?.length ? { folder: updating.folder, notes: result.notes } : null;
+    await loadGames();
+    updating = games.games.find(game => game.folder === updating.folder) ?? updating;
+    renderPhysicsList(); draw(true);
+  } catch (error) { $('#update-error').textContent = error.message; $('#update-error').hidden = false; }
+}
+
+async function removePhysicsEngine(item) {
+  if (!window.confirm(`Remove ${item.label} from ${updating.folder}?\n\nIts adapter, alias and packages go. Removal is refused if game code still imports it.`)) return;
+  await runRemoval('remove-physics', { folder: updating.folder, physics: item.id }, `Removed ${item.label} from ${updating.folder}.`);
+}
+
+async function removeRendererChoice(item) {
+  if (!window.confirm(`Remove ${item.label} from ${updating.folder}?\n\nIts files, alias and packages go. Removal is refused if game code still imports it.`)) return;
+  await runRemoval('remove-renderer', { folder: updating.folder, renderer: item.id }, `Removed ${item.label} from ${updating.folder}.`);
+}
+
+/** Runs a removal, shows its notes as next steps, and refreshes both lists. Errors show inside the dialog. */
+async function runRemoval(route, body, message) {
+  try {
+    const result = await api(route, body);
+    say(message);
+    updateNotes = result.notes?.length ? { folder: updating.folder, notes: result.notes } : null;
+    await loadGames();
+    updating = games.games.find(game => game.folder === updating.folder) ?? updating;
+    renderRendererList(); renderPhysicsList(); draw(true);
+  } catch (error) { $('#update-error').textContent = error.message; $('#update-error').hidden = false; }
 }
 
 function renderRendererList() {
@@ -283,7 +343,7 @@ function renderRendererList() {
     const row = el('div', 'pick');
     const text = el('span', 't'); text.append(el('span', '', item.label), el('small', '', `${item.kind.toUpperCase()} · ${item.note}`));
     row.append(text);
-    if (item.status === 'ready') row.append(el('span', 'chip ok', 'In this game'));
+    if (item.copied) row.append(el('span', 'chip ok', 'In this game'), button('Remove', () => removeRendererChoice(item), 'btn sm danger'));
     else row.append(button('Add', () => addRenderer(item.id), 'btn sm'));
     list.append(row);
   }
@@ -362,9 +422,11 @@ function renderHome() {
       const st = el('span', 'st'); st.append(dot(!info ? '' : info.outdated ? 'warn' : 'ok'), !info ? 'Unknown' : info.outdated ? 'Update available' : 'Up to date');
       toolsCell.append(st, el('div', 'muted mono small', info ? `${info.version} · ${info.revision}` : ''));
       const open = el('td', 'right actions-cell');
-      if (info) open.append(button('Update tools', () => openUpdate(game), info.outdated ? 'btn sm warn' : 'link small'), ' ');
-      open.append(button('Open', () => openGame(game.folder), `btn sm${info?.outdated ? '' : ' primary'}`));
-      if (game.example?.removable) open.append(' ', button('Remove example', () => removeExample(game), 'link danger small'));
+      const buttons = el('div', 'row-buttons');
+      if (info) buttons.append(button('Update tools', () => openUpdate(game), info.outdated ? 'btn sm warn' : 'btn sm'));
+      buttons.append(button('Open', () => openGame(game.folder), `btn sm${info?.outdated ? '' : ' primary'}`));
+      if (game.example?.removable) buttons.append(button('Remove example', () => removeExample(game), 'btn sm danger'));
+      open.append(buttons);
       row.append(name, kind, toolsCell, open); row.addEventListener('click', () => openGame(game.folder));
       body.append(row);
     }
