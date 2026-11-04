@@ -49,8 +49,7 @@ const jobPlatform = new Map();
 const seenJobs = new Set();
 let booted = false;
 let lastSignature = '';
-let created = null;
-let lastUpdate = null;
+let updateNotes = null; // { folder, notes }: next steps after an update, kept until the user dismisses them
 let updating = null;
 
 // One notification stack for the whole page, top right. Newest on top. Each message dismisses itself after a few
@@ -248,15 +247,16 @@ function makeCreateForm() {
     event.preventDefault();
     try {
       const { folder } = await api('create', { name: form.elements.name.value, renderer: form.dataset.renderer });
-      const { url } = await api('open-game', { folder });
-      created = { folder, url }; await loadGames(); draw(true);
+      await api('open-game', { folder });
+      say(`Created ${folder}. Its dashboard is opening in your browser.`);
+      await loadGames(); draw(true);
     } catch (error) { say(error.message); }
   });
   return form;
 }
 
 async function openGame(folder) {
-  try { const { url } = await api('open-game', { folder }); created = { folder, url, opened: true }; await loadGames(); draw(true); }
+  try { await api('open-game', { folder }); say(`Opened ${folder}. Its dashboard is in your browser.`); await loadGames(); draw(true); }
   catch (error) { say(error.message); }
 }
 
@@ -292,7 +292,8 @@ function renderRendererList() {
 async function addRenderer(id) {
   try {
     const result = await api('add-renderer', { folder: updating.folder, renderer: id });
-    lastUpdate = { folder: updating.folder, updated: [`renderer ${id}`], from: '', to: '', notes: result.notes };
+    say(`Added renderer ${id} to ${updating.folder}.`);
+    updateNotes = result.notes?.length ? { folder: updating.folder, notes: result.notes } : null;
     await loadGames();
     updating = games.games.find(game => game.folder === updating.folder) ?? updating;
     renderRendererList(); draw(true);
@@ -305,7 +306,9 @@ $('#update-form').addEventListener('submit', async event => {
   try {
     const result = await api('update-game', { folder: updating.folder, components });
     $('#update-dialog').close();
-    lastUpdate = { folder: updating.folder, ...result }; created = null;
+    const changed = result.updated.join(', ');
+    say(`Updated ${updating.folder}: ${changed}${result.to !== result.from ? ` (${result.from} → ${result.to})` : ''}. Click Open to use the new tools.`);
+    updateNotes = result.notes?.length ? { folder: updating.folder, notes: result.notes } : null;
     await loadGames(); draw(true);
   } catch (error) { $('#update-error').textContent = error.message; $('#update-error').hidden = false; }
 });
@@ -315,6 +318,17 @@ async function loadGames() {
   try { games = await api('games'); } catch (error) { say(error.message); }
 }
 
+/** Permanently deletes a game's default example after confirmation. The game's own code, native projects and builds stay. */
+async function removeExample(game) {
+  const files = game.example.present.map(file => `src/${file}`).join(', ');
+  if (!window.confirm(`Permanently delete the default example from ${game.folder}?\n\nDeletes ${files}. This cannot be undone.\n\nThe game keeps its own code, native projects and builds. Its entry point becomes an empty starter in src/main.ts.`)) return;
+  try {
+    await api('remove-example', { folder: game.folder });
+    say(`Removed the example from ${game.folder}. Start in src/main.ts.`);
+    await loadGames(); draw(true);
+  } catch (error) { say(error.message); }
+}
+
 function renderHome() {
   const view = el('div');
   const head = el('div', 'head');
@@ -322,16 +336,11 @@ function renderHome() {
   head.append(title);
   view.append(el('div', 'crumb', state.project.root), head);
 
-  if (created) {
+  if (updateNotes) {
     const box = el('div', 'result ok');
-    box.append(el('p', '', `${created.opened ? 'Opened' : 'Created'} ${created.folder}. Its dashboard should open in your browser.`), link(`Open ${created.folder} dashboard`, created.url));
-    view.append(box);
-  }
-
-  if (lastUpdate) {
-    const box = el('div', 'result ok');
-    box.append(el('p', '', `Updated ${lastUpdate.folder}: ${lastUpdate.updated.join(', ')}${lastUpdate.to !== lastUpdate.from ? ` (${lastUpdate.from} → ${lastUpdate.to})` : ''}. Click Open to use the new tools.`));
-    if (lastUpdate.notes.length) { const notes = el('ul'); for (const note of lastUpdate.notes) notes.append(el('li', '', note)); box.append(notes); }
+    box.append(el('p', '', `Next steps for ${updateNotes.folder}:`));
+    const notes = el('ul'); for (const note of updateNotes.notes) notes.append(el('li', '', note)); box.append(notes);
+    box.append(button('Dismiss', () => { updateNotes = null; draw(true); }, 'link'));
     view.append(box);
   }
 
@@ -346,6 +355,7 @@ function renderHome() {
       const row = el('tr', 'click');
       const info = game.update;
       const name = el('td'); name.append(el('b', '', game.folder), el('div', 'muted mono small', `../${game.folder}`));
+      if (game.example?.present?.length) name.append(el('div', 'muted small', game.example.removable ? 'Includes the default example' : 'Example edited. Remove it by hand.'));
       const choice = games.renderers?.find(item => item.id === game.renderer);
       const kind = el('td', 'mono', choice ? `${choice.label} · ${choice.kind.toUpperCase()}` : game.renderer);
       const toolsCell = el('td');
@@ -354,6 +364,7 @@ function renderHome() {
       const open = el('td', 'right actions-cell');
       if (info) open.append(button('Update tools', () => openUpdate(game), info.outdated ? 'btn sm warn' : 'link small'), ' ');
       open.append(button('Open', () => openGame(game.folder), `btn sm${info?.outdated ? '' : ' primary'}`));
+      if (game.example?.removable) open.append(' ', button('Remove example', () => removeExample(game), 'link danger small'));
       row.append(name, kind, toolsCell, open); row.addEventListener('click', () => openGame(game.folder));
       body.append(row);
     }
@@ -619,7 +630,7 @@ function renderJobBar() {
 function draw(force = false) {
   if (!state) return;
   const signature = JSON.stringify([
-    state.project.kind, state.project.name, route, mode, created, lastUpdate, [...checking], [...checkLog.keys()].map(key => [key, checkLog.get(key).length]), games?.games.map(game => [game.folder, game.update?.revision, game.update?.outdated]),
+    state.project.kind, state.project.name, route, mode, updateNotes, [...checking], [...checkLog.keys()].map(key => [key, checkLog.get(key).length]), games?.games.map(game => [game.folder, game.update?.revision, game.update?.outdated]),
     Object.keys(checks).sort().map(id => [id, checks[id].ready, checks[id].checks.map(item => item.ok)]),
     state.jobs.map(job => [job.id, job.status, !!job.output, job.log.length, job.devUrl ?? null])
   ]);

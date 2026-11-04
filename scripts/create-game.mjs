@@ -12,7 +12,7 @@ export const COMPONENTS = [
   { id: 'framework', label: 'Core framework', note: 'Events, UI, state, input', files: ['src/framework'] },
   { id: 'renderers', label: 'Renderers', note: 'Pixi, Three and any added since', files: ['src/renderers'] },
   { id: 'platform', label: 'Platform layer', note: 'Desktop and mobile hooks', files: ['src/platform'] },
-  { id: 'workshop', label: 'Workshop dashboard', note: 'This dashboard and the doctor check', files: ['scripts/export-ui', 'scripts/doctor.mjs'] },
+  { id: 'workshop', label: 'Workshop dashboard', note: 'This dashboard, the doctor check and the example remover', files: ['scripts/export-ui', 'scripts/doctor.mjs', 'scripts/create-game.mjs'] },
   { id: 'docs', label: 'Docs', note: 'Framework documentation', files: ['docs'] }
 ];
 const frameworkFiles = COMPONENTS.flatMap(component => component.files);
@@ -168,6 +168,111 @@ async function statusOf(target) {
   return { version: meta.version, revision: revisionOf(mine), renderers: await rendererStates(target), framework: { version: framework.version, revision: framework.revision }, components, outdated: components.some(item => item.status !== 'current') };
 }
 const demoFiles = ['flappy.ts', 'demo.ts', 'demo-settings.ts', 'demo.css'];
+const digest = text => createHash('sha256').update(text).digest('hex');
+
+/** Game code imports the framework by package-style names, which the game's aliases resolve to the copied files. */
+export function rewriteExample(text) {
+  return text.replaceAll("from './framework'", "from 'gameframework'").replace(/from '\.\/renderers\/([a-z0-9-]+)'/g, "from 'gameframework/$1'").replaceAll("from './platform/desktop'", "from 'gameframework/desktop'");
+}
+
+/** SHA-256 of each example file as createGame writes it into a game. Recorded in VERSION.json as example.files. */
+async function exampleHashesFor(entry) {
+  const files = [...demoFiles, entry.demo];
+  return Object.fromEntries(await Promise.all(files.map(async file => [file, digest(rewriteExample(await readFile(path.join(source, 'src', file), 'utf8')))])));
+}
+
+/** Hash of an example file as the framework ships it now. Used for games made before hashes were recorded. */
+async function frameworkExampleHash(file) {
+  const text = await readFile(path.join(source, 'src', file), 'utf8').catch(() => undefined);
+  return text === undefined ? undefined : digest(rewriteExample(text));
+}
+
+/**
+ * What is left of the default example in a game. present: example files on disk. changed: example files the game
+ * has edited, which removal refuses to delete. removable: something is left to remove and nothing was edited.
+ */
+async function exampleStatusOf(target) {
+  const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => '{}'));
+  const renderer = await gameRenderer(target);
+  const entry = (await readRegistry(source)).find(item => item.id === renderer);
+  const files = [...demoFiles, ...(entry ? [entry.demo] : [])];
+  const present = []; const changed = [];
+  for (const file of files) {
+    const current = await readFile(path.join(target, 'src', file), 'utf8').catch(() => undefined);
+    if (current === undefined) continue;
+    present.push(file);
+    const expected = meta.example?.files?.[file] ?? await frameworkExampleHash(file);
+    if (!expected || digest(current) !== expected) changed.push(file);
+  }
+  return { present, changed, removable: present.length > 0 && changed.length === 0 };
+}
+
+/** Read-only: the default example's state in a game folder, for the games page and the game's own dashboard. */
+export async function exampleStatus(directory) {
+  return exampleStatusOf(path.resolve(directory));
+}
+
+/**
+ * Records the default example's hashes in a game made before they were recorded, when the example is unmodified.
+ * After that the game can check and remove its example without the framework's example files. Returns true when it recorded.
+ */
+export async function recordExample(directory) {
+  const target = path.resolve(directory);
+  const before = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => '{}'));
+  if (before.example) return false;
+  return lockedGame(target, async locked => {
+    const meta = JSON.parse(await readFile(path.join(locked, tools, 'VERSION.json'), 'utf8'));
+    if (meta.example) return false;
+    const status = await exampleStatusOf(locked);
+    if (!status.removable) return false;
+    const files = Object.fromEntries(await Promise.all(status.present.map(async file => [file, digest(await readFile(path.join(locked, 'src', file), 'utf8'))])));
+    meta.example = { files };
+    await replaceItems(locked, [{ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' }]);
+    return true;
+  });
+}
+
+const starterFile = 'src/main.ts';
+const starterCode = [
+  '// Your game starts here. The default example was removed, so this file is the entry point.',
+  "// The framework is available as 'gameframework' (see tools/gameframework/docs/FRAMEWORK.md).",
+  "const app = document.querySelector<HTMLDivElement>('#app');",
+  "if (app) app.textContent = 'Your game starts here.';",
+  ''
+].join('\n');
+const starterHtml = name => `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/main.ts"></script></body></html>`;
+
+/**
+ * Permanently deletes the default example from a game. Refused when the game has no example, or when the game edited any
+ * example file (those edits are the user's work). The entry point becomes an empty starter. Game code, src-tauri,
+ * profiles and builds are not touched.
+ */
+export async function removeExample(directory) {
+  return lockedGame(directory, async target => {
+    const status = await exampleStatusOf(target);
+    if (!status.present.length) throw new Error('This game has no example to remove.');
+    if (status.changed.length) throw new Error(`Not removed. You edited ${status.changed.join(', ')}, so those files are your code now. Delete them by hand if you no longer need them.`);
+    if (await exists(path.join(target, starterFile))) throw new Error(`Not removed. ${starterFile} already exists and the starter would replace it.`);
+    const pkg = JSON.parse(await readFile(path.join(target, 'package.json'), 'utf8'));
+    const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8'));
+    delete meta.example;
+    const items = [
+      { path: starterFile, text: starterCode },
+      { path: 'index.html', text: starterHtml(pkg.name) },
+      { path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' }
+    ];
+    const readme = await readFile(path.join(target, 'README.md'), 'utf8').catch(() => undefined);
+    if (readme !== undefined) items.push({ path: 'README.md', text: readme.replace(/^Example files \(Pocket Flight\):.*$/m, 'Your game starts in `src/main.ts`. The Pocket Flight example was removed.') });
+    await replaceItems(target, items);
+    const removed = [];
+    try {
+      for (const file of status.present) { await rm(path.join(target, 'src', file), { force: true }); removed.push(`src/${file}`); }
+    } catch (error) {
+      throw new Error(`The starter is in place, but some example files could not be deleted: ${error.message}. Close anything using the game and remove the rest by hand.`);
+    }
+    return { removed, starter: starterFile };
+  });
+}
 
 /** Double-click launchers for the Game Workshop dashboard. serverPath is relative to the project folder. */
 export async function writeLaunchers(directory, serverPath) {
@@ -353,7 +458,7 @@ export async function updateGame(directory, only, { onSwap } = {}) {
     const components = { ...meta.components };
     for (const component of chosen) components[component.id] = framework.hashes[component.id];
     const everything = chosen.length === COMPONENTS.length;
-    const text = JSON.stringify({ framework: meta.framework, renderer: meta.renderer, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components }, null, 2) + '\n';
+    const text = JSON.stringify({ framework: meta.framework, renderer: meta.renderer, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components, example: meta.example }, null, 2) + '\n';
     const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
     // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
     const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
@@ -391,7 +496,7 @@ export async function createGame(directory, rendererArg) {
   // Copy the framework into the game so it never depends on this checkout after generation.
   await mkdir(path.join(target, 'src'), { recursive: true });
   for (const item of frameworkFiles) await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
-  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, renderer: entry.id, copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes }, null, 2) + '\n');
+  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, renderer: entry.id, copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes, example: { files: await exampleHashesFor(entry) } }, null, 2) + '\n');
 
   const scripts = {};
   for (const [key, value] of Object.entries(own.scripts)) if (key.includes(':') && !['create:game', 'export:ui'].includes(key)) scripts[key] = value;
@@ -408,8 +513,7 @@ export async function createGame(directory, rendererArg) {
   await writeFile(path.join(target, 'package.json'), JSON.stringify({ name, version: '0.1.0', private: true, type: 'module', scripts, dependencies, devDependencies }, null, 2) + '\n');
 
   // Game code imports the framework by package-style names, which the aliases below resolve to the copied files.
-  const rewrite = text => text.replaceAll("from './framework'", "from 'gameframework'").replace(/from '\.\/renderers\/([a-z0-9-]+)'/g, "from 'gameframework/$1'").replaceAll("from './platform/desktop'", "from 'gameframework/desktop'");
-  for (const file of [...demoFiles, entry.demo]) await writeFile(path.join(target, 'src', file), rewrite(await readFile(path.join(source, 'src', file), 'utf8')));
+  for (const file of [...demoFiles, entry.demo]) await writeFile(path.join(target, 'src', file), rewriteExample(await readFile(path.join(source, 'src', file), 'utf8')));
 
   await writeFile(path.join(target, 'index.html'), `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${name}</title></head><body><div id="app"></div><script type="module" src="/src/${entry.demo}"></script></body></html>`);
   const aliasPaths = { gameframework: `src/framework/index.ts`, ...Object.fromEntries(registry.map(item => [`gameframework/${item.id}`, `src/renderers/${item.entry}`])), 'gameframework/desktop': 'src/platform/desktop.ts' };

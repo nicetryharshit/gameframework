@@ -42,6 +42,10 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
   const games = new Map();
   const log = (job, value) => { job.log = (job.log + value.replace(/\u001b\[[0-9;]*m/g, '')).slice(-200_000); };
   const isFramework = async () => (await projectInfo(root)).kind === 'framework';
+  /** The generator sits next to this dashboard's scripts folder: the framework's copy, or the game's own copy. */
+  const generator = () => import(pathToFileURL(path.join(assets, '..', 'create-game.mjs')).href);
+  /** The default example's state for a game's own dashboard. Framework mode lists games instead. */
+  const gameExample = async () => (await isFramework()) ? undefined : (await generator()).exampleStatus(root).catch(() => undefined);
 
   async function createGame(data) {
     if (!(await isFramework())) throw new Error('New games can only be created from the framework folder.');
@@ -92,11 +96,21 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     return add(gameRoot, String(data.renderer ?? ''));
   }
 
+  /**
+   * Permanently removes the default example. Framework mode removes it from the game named in the request; a game's own
+   * dashboard removes it from its own folder. Only the example files are deleted; the game keeps its own code.
+   */
+  async function removeExampleFrom(data) {
+    const target = (await isFramework()) ? (await gameFolder(data)).gameRoot : root;
+    const { removeExample } = await generator();
+    return removeExample(target);
+  }
+
   /** Lists game folders next to the framework folder so the home page can show them. */
   async function listGames() {
     if (!(await isFramework())) throw new Error('Games are listed from the framework folder.');
     const parent = path.dirname(root); const found = [];
-    const { inspectGame, frameworkVersion, gameRenderer, readRegistry } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
+    const { inspectGame, frameworkVersion, gameRenderer, readRegistry, exampleStatus, recordExample } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
     const renderers = await readRegistry(root);
     for (const entry of await readdir(parent, { withFileTypes: true }).catch(() => [])) {
       if (!entry.isDirectory() || !/^[a-z0-9][a-z0-9-]*$/.test(entry.name)) continue;
@@ -104,7 +118,9 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       if (!(await exists(path.join(folder, 'tools', 'gameframework', 'scripts', 'export-ui', 'server.mjs')))) continue;
       const update = await inspectGame(folder).catch(() => undefined);
       const renderer = await gameRenderer(folder);
-      found.push({ folder: entry.name, update, renderer, kind: renderers.find(item => item.id === renderer)?.kind ?? '2d', running: games.has(entry.name) });
+      await recordExample(folder).catch(() => false);
+      const example = await exampleStatus(folder).catch(() => undefined);
+      found.push({ folder: entry.name, update, renderer, example, kind: renderers.find(item => item.id === renderer)?.kind ?? '2d', running: games.has(entry.name) });
     }
     const { version, revision } = await frameworkVersion();
     return { games: found.sort((a, b) => a.folder.localeCompare(b.folder)), parent, framework: { version, revision }, renderers: renderers.map(({ id, label, kind, note }) => ({ id, label, kind, note })) };
@@ -158,7 +174,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       const url = new URL(req.url, address.origin);
       if (url.pathname.startsWith('/api/')) {
         if (req.headers['x-export-token'] !== token || (req.headers.origin && req.headers.origin !== address.origin)) return json({ error: 'Unauthorized local request' }, 403);
-        if (req.method === 'GET' && url.pathname === '/api/state') return json({ project: await projectInfo(root), active: active?.id, jobs: jobs.map(({ child, ...job }) => job) });
+        if (req.method === 'GET' && url.pathname === '/api/state') return json({ project: await projectInfo(root), example: await gameExample(), active: active?.id, jobs: jobs.map(({ child, ...job }) => job) });
         if (req.method === 'GET' && url.pathname === '/api/games') return json(await listGames());
         if (req.method !== 'POST' || req.headers.origin !== address.origin || !req.headers['content-type']?.startsWith('application/json')) return json({ error: 'Invalid request' }, 403);
         let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 16384) throw new Error('Request too large'); }
@@ -168,6 +184,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         if (url.pathname === '/api/open-game') return json(await openGame(data));
         if (url.pathname === '/api/update-game') return json(await updateGame(data));
         if (url.pathname === '/api/add-renderer') return json(await addRenderer(data));
+        if (url.pathname === '/api/remove-example') return json(await removeExampleFrom(data));
         if (url.pathname === '/api/ios-settings') {
           if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
           const settings = validateIosSettings(data.settings);
