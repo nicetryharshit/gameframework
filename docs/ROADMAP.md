@@ -86,7 +86,7 @@ Run with `npm run export:ui`. The page is now a set of platform cards, not a pro
 7. **Add renderer tests** for PixiJS and Three.js: mount, resize and dispose.
 8. **Add a native shell smoke test** for the Tauri shell, the `platform_kind` command and the desktop settings path.
 9. **Test on real devices**: touch, controller and fullscreen on an iPhone, an Android phone, and a Steam Deck or similar.
-10. **Re-measure bundle size.** The old `3d.html` entry that produced the 523 kB 3D chunk has been removed. Measure again once a real game ships Three.js.
+10. **Re-measure bundle size.** The old `3d.html` entry that produced the 523 kB 3D chunk has been removed. Run `node scripts/measure-size.mjs <gameFolder>` on a generated game to see each file's raw and gzipped size. Do this for a Three.js game once one ships.
 11. **Make the doctor run the build.** Currently it checks prerequisites only. A "verified" status should come from a real build run.
 
 ## P2: polish and scale
