@@ -1,4 +1,4 @@
-import { AppLifecycle, DebugOverlay, GameLoop, Input, StateManager, UIController, VersionedSaveStore } from './framework';
+import { AppLifecycle, DebugOverlay, EventBus, GameLoop, Input, StateManager, UIController, VersionedSaveStore } from './framework';
 import { FlappyGame } from './flappy';
 import { createGameOptions } from './demo-settings';
 
@@ -53,9 +53,17 @@ export async function startDemo(renderer: string, makeView: (container: HTMLElem
   let loop: GameLoop | undefined;
   let disposed = false;
   const listeners = new AbortController();
+  // Gameplay announces what happened; sound and saving react to it, so the loop does not call them directly.
+  const events = new EventBus<{ flap: undefined; score: number; died: number }>();
+  events.on('flap', () => options.sound('flap'));
+  events.on('score', () => options.sound('score'));
+  events.on('died', finalScore => {
+    options.sound('crash');
+    if (finalScore > best) { best = finalScore; if (saves && !saves.save('best', best).ok) { saves = undefined; saveUnavailable(); } }
+  });
   const dispose = () => {
     if (disposed) return; disposed = true;
-    loop?.stop(); listeners.abort(); lifecycle?.dispose(); options.dispose(); debug?.dispose(); input.dispose(); states.dispose(); ui.dispose(); view?.dispose();
+    loop?.stop(); listeners.abort(); events.clear(); lifecycle?.dispose(); options.dispose(); debug?.dispose(); input.dispose(); states.dispose(); ui.dispose(); view?.dispose();
   };
   if (import.meta.hot) import.meta.hot.dispose(dispose);
   const begin = () => { options.unlock(); game.reset(); game.flap(); flapRequested = false; input.reset(); states.change('playing'); };
@@ -74,12 +82,11 @@ export async function startDemo(renderer: string, makeView: (container: HTMLElem
     enter: () => { hud.hidden = false; ui.hide(); },
     update: (_, dt) => {
       if (input.pressed('pause')) { states.change('paused'); return; }
-      if (flapRequested || input.pressed('flap')) { options.unlock(); game.flap(); options.sound('flap'); } flapRequested = false;
+      if (flapRequested || input.pressed('flap')) { options.unlock(); game.flap(); events.emit('flap', undefined); } flapRequested = false;
       game.update(dt);
-      if (game.score !== displayedScore) { if (game.score > displayedScore && displayedScore >= 0) options.sound('score'); displayedScore = game.score; score.textContent = String(game.score); }
+      if (game.score !== displayedScore) { if (game.score > displayedScore && displayedScore >= 0) events.emit('score', game.score); displayedScore = game.score; score.textContent = String(game.score); }
       if (game.dead) {
-        options.sound('crash');
-        if (game.score > best) { best = game.score; if (saves && !saves.save('best', best).ok) { saves = undefined; saveUnavailable(); } }
+        events.emit('died', game.score);
         states.change('over');
       }
     }
