@@ -1,5 +1,49 @@
-import { AudioMixer, createPreferencesStore, defaultPreferences, type GamePreferences, type Input } from './framework';
+import { AudioMixer, createPreferencesStore, defaultPreferences, loadAssets, type GamePreferences, type Input } from './framework';
 import { createDesktopControls, type DesktopControls } from './platform/desktop';
+
+/** The example's sounds: a tone for each event, in hertz. */
+const SOUNDS = { flap: 520, score: 880, crash: 140 } as const;
+type SoundName = keyof typeof SOUNDS;
+
+/** A short fading tone as a WAV file. The example makes its sounds this way so they load through the same path as any game's files. */
+function toneUrl(frequency: number): string {
+  const rate = 22050;
+  const count = Math.ceil(rate * 0.08);
+  const buffer = new ArrayBuffer(44 + count * 2);
+  const bytes = new DataView(buffer);
+  const text = (offset: number, value: string) => { for (let i = 0; i < value.length; i++) bytes.setUint8(offset + i, value.charCodeAt(i)); };
+  text(0, 'RIFF'); bytes.setUint32(4, 36 + count * 2, true); text(8, 'WAVE'); text(12, 'fmt ');
+  bytes.setUint32(16, 16, true); bytes.setUint16(20, 1, true); bytes.setUint16(22, 1, true);
+  bytes.setUint32(24, rate, true); bytes.setUint32(28, rate * 2, true); bytes.setUint16(32, 2, true); bytes.setUint16(34, 16, true);
+  text(36, 'data'); bytes.setUint32(40, count * 2, true);
+  for (let i = 0; i < count; i++) {
+    const sample = Math.sin(2 * Math.PI * frequency * i / rate) * (1 - i / count) * 0.12;
+    bytes.setInt16(44 + i * 2, Math.round(sample * 32767), true);
+  }
+  return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
+}
+
+/** Loads the example's sounds through the asset loader and shows progress in the settings status line. */
+async function loadSounds(context: AudioContext, mixer: AudioMixer, status: HTMLElement, cancelled: () => boolean) {
+  const urls = Object.fromEntries(Object.entries(SOUNDS).map(([name, frequency]) => [name, toneUrl(frequency)])) as Record<SoundName, string>;
+  try {
+    const assets = await loadAssets({
+      flap: { kind: 'sound', url: urls.flap },
+      score: { kind: 'sound', url: urls.score },
+      crash: { kind: 'sound', url: urls.crash },
+    } as const, {
+      audio: context,
+      onProgress: ({ loaded, total }) => { if (!cancelled()) status.textContent = `Loading sounds ${loaded} of ${total}`; },
+    });
+    if (cancelled()) { assets.dispose(); return; }
+    for (const name of Object.keys(SOUNDS) as SoundName[]) mixer.setBuffer(name, assets.sound(name));
+    if (!cancelled() && (status.textContent ?? '').startsWith('Loading sounds')) status.textContent = '';
+  } catch {
+    if (!cancelled()) status.textContent = 'Sounds could not load. The game continues without them.';
+  } finally {
+    for (const url of Object.values(urls)) URL.revokeObjectURL(url);
+  }
+}
 
 /** Removable example settings UI; storage, audio and window controls stay reusable. */
 export async function createGameOptions() {
@@ -89,12 +133,7 @@ export async function createGameOptions() {
       try {
         if (!mixer) {
           const context = new AudioContext(); mixer = new AudioMixer(context); audioVolumes();
-          for (const [name, frequency] of [['flap', 520], ['score', 880], ['crash', 140]] as const) {
-            const buffer = context.createBuffer(1, Math.ceil(context.sampleRate * 0.08), context.sampleRate);
-            const samples = buffer.getChannelData(0);
-            for (let i = 0; i < samples.length; i++) samples[i] = Math.sin(2 * Math.PI * frequency * i / context.sampleRate) * (1 - i / samples.length) * 0.12;
-            mixer.setBuffer(name, buffer);
-          }
+          void loadSounds(context, mixer, status, () => disposed);
         }
         void mixer.unlock().catch(() => {});
       } catch { /* Audio is optional when unavailable. */ }
