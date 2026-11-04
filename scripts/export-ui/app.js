@@ -378,6 +378,23 @@ function renderHome() {
 }
 
 /* ---------- game overview ---------- */
+/** Removes the default example from this game, permanently, after confirmation. */
+async function removeExampleHere() {
+  if (!window.confirm('Permanently delete the default example?\n\nThis cannot be undone. Your own code, native projects and builds stay.')) return;
+  try {
+    await api('remove-example', {});
+    say('Removed the default example. Start in src/main.ts.');
+    state = await api('state'); draw(true);
+  } catch (error) { say(error.message); }
+}
+
+function exampleZone() {
+  const zone = el('div', 'danger-zone');
+  const files = state.example.present.map(file => `src/${file}`).join(', ');
+  zone.append(el('h3', '', 'Default example'), el('p', 'hint', `Deletes ${files} for good. Your own code, native projects and builds stay. The game then starts from an empty src/main.ts.`), button('Remove example', removeExampleHere, 'btn danger'));
+  return zone;
+}
+
 function renderOverview() {
   const view = el('div');
   const head = el('div', 'head');
@@ -415,6 +432,7 @@ function renderOverview() {
   }
   table.append(body);
   const card = el('div', 'card'); card.append(table); view.append(card);
+  if (state.example?.removable) view.append(exampleZone());
   return view;
 }
 

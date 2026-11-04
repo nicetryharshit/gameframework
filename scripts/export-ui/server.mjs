@@ -53,7 +53,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
     if (!slug || slug.length > 40) throw new Error('Use letters or numbers for the game name.');
     const { createGame: generate, readRegistry } = await import(pathToFileURL(path.join(root, 'scripts', 'create-game.mjs')).href);
     if (!(await readRegistry(root)).some(item => item.id === data.renderer)) throw new Error('Choose a renderer.');
-    await generate(path.join(path.dirname(root), slug), data.renderer);
+    await generate(path.join(path.dirname(root), slug), data.renderer, String(data.physics ?? 'none'));
     return { folder: slug };
   }
 

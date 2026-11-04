@@ -11,11 +11,21 @@ const tools = 'tools/gameframework';
 export const COMPONENTS = [
   { id: 'framework', label: 'Core framework', note: 'Events, UI, state, input', files: ['src/framework'] },
   { id: 'renderers', label: 'Renderers', note: 'Pixi, Three and any added since', files: ['src/renderers'] },
+  { id: 'physics', label: 'Physics engines', note: 'Optional physics engines the game uses', files: ['src/physics'] },
   { id: 'platform', label: 'Platform layer', note: 'Desktop and mobile hooks', files: ['src/platform'] },
   { id: 'workshop', label: 'Workshop dashboard', note: 'This dashboard, the doctor check and the example remover', files: ['scripts/export-ui', 'scripts/doctor.mjs', 'scripts/create-game.mjs'] },
   { id: 'docs', label: 'Docs', note: 'Framework documentation', files: ['docs'] }
 ];
 const frameworkFiles = COMPONENTS.flatMap(component => component.files);
+
+/**
+ * Framework files a new game gets: the dashboard, core, platform and docs, plus only the renderer and physics engine it uses.
+ * Other renderers and physics engines stay in the framework and can be added later, one at a time.
+ */
+function gameFiles(renderer, physics) {
+  const shared = COMPONENTS.filter(component => !['renderers', 'physics'].includes(component.id)).flatMap(component => component.files);
+  return [...shared, `src/renderers/${renderer.entry}`, ...(physics ? [`src/physics/${physics.entry}`] : [])];
+}
 
 async function walk(file, relative, out) {
   const info = await stat(file).catch(() => undefined);
@@ -42,6 +52,11 @@ async function hashesFor(root) {
 export async function readRegistry(root) {
   const text = await readFile(path.join(root, 'src/renderers/registry.json'), 'utf8').catch(() => '{"renderers":[]}');
   return JSON.parse(text).renderers;
+}
+/** Physics engines the framework offers, from src/physics/registry.json. Like renderers, each one is optional. */
+export async function readPhysics(root) {
+  const text = await readFile(path.join(root, 'src/physics/registry.json'), 'utf8').catch(() => '{"physics":[]}');
+  return JSON.parse(text).physics;
 }
 const aliasOf = entry => `gameframework/${entry.id}`;
 
@@ -111,7 +126,8 @@ export async function addRenderer(directory, id) {
       const versionFile = path.join(target, tools, 'VERSION.json');
       const meta = JSON.parse(await readFile(versionFile, 'utf8'));
       meta.components = { ...meta.components, renderers: (await frameworkVersion()).hashes.renderers };
-      items.push(...renderers.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+      items.push({ path: `${tools}/src/renderers/${entry.entry}`, from: path.join(source, 'src/renderers', entry.entry) });
+      items.push({ path: `${tools}/src/renderers/registry.json`, text: JSON.stringify({ renderers: [...copied.filter(item => item.id !== id), entry] }, null, 2) + '\n' });
       items.push({ path: `${tools}/VERSION.json`, text: JSON.stringify(meta, null, 2) + '\n' });
     }
     const wiring = await planRendererWiring(target);
@@ -155,14 +171,30 @@ export async function inspectGame(directory) {
   return lockedGame(directory, statusOf);
 }
 
+/**
+ * Renderers and physics are copied one engine at a time, so they are compared file by file against the framework.
+ * The game's trimmed registry is left out: it is supposed to differ.
+ */
+async function matchesFramework(target, component) {
+  const found = [];
+  for (const item of component.files) await walk(path.join(target, tools, item), item, found);
+  for (const [relative, file] of found) {
+    if (relative.endsWith('registry.json')) continue;
+    const theirs = await readFile(path.join(source, relative), 'utf8').catch(() => undefined);
+    if (theirs === undefined || theirs !== await readFile(file, 'utf8')) return false;
+  }
+  return true;
+}
+
 /** The game's status as it is on disk. Callers hold the game's lock. */
 async function statusOf(target) {
   const meta = JSON.parse(await readFile(path.join(target, tools, 'VERSION.json'), 'utf8').catch(() => { throw new Error('That folder is not a Game Workshop game.'); }));
   const framework = await frameworkVersion();
   const mine = await hashesFor(path.join(target, tools));
+  const partial = { renderers: await matchesFramework(target, COMPONENTS.find(item => item.id === 'renderers')), physics: await matchesFramework(target, COMPONENTS.find(item => item.id === 'physics')) };
   const components = COMPONENTS.map(component => {
     const have = mine[component.id]; const want = framework.hashes[component.id]; const recorded = meta.components?.[component.id];
-    const status = !have ? 'missing' : have === want ? 'current' : recorded && have !== recorded ? 'modified' : 'outdated';
+    const status = partial[component.id] !== undefined ? (partial[component.id] ? 'current' : 'outdated') : !have ? 'missing' : have === want ? 'current' : recorded && have !== recorded ? 'modified' : 'outdated';
     return { id: component.id, label: component.label, note: component.note, status };
   });
   return { version: meta.version, revision: revisionOf(mine), renderers: await rendererStates(target), framework: { version: framework.version, revision: framework.revision }, components, outdated: components.some(item => item.status !== 'current') };
@@ -207,7 +239,7 @@ async function exampleStatusOf(target) {
   return { present, changed, removable: present.length > 0 && changed.length === 0 };
 }
 
-/** Read-only: the default example's state in a game folder, for the games page and the game's own dashboard. */
+/** Read-only: the default example's state in a game folder, for the games page. */
 export async function exampleStatus(directory) {
   return exampleStatusOf(path.resolve(directory));
 }
@@ -458,8 +490,16 @@ export async function updateGame(directory, only, { onSwap } = {}) {
     const components = { ...meta.components };
     for (const component of chosen) components[component.id] = framework.hashes[component.id];
     const everything = chosen.length === COMPONENTS.length;
-    const text = JSON.stringify({ framework: meta.framework, renderer: meta.renderer, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components, example: meta.example }, null, 2) + '\n';
-    const copies = chosen.flatMap(component => component.files.map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) })));
+    const text = JSON.stringify({ framework: meta.framework, renderer: meta.renderer, physics: meta.physics, version: everything ? framework.version : meta.version, copiedAt: new Date().toISOString(), components, example: meta.example }, null, 2) + '\n';
+    // Only the renderer and physics engines this game uses are copied. The framework's other engines stay out of it.
+    const physics = await readPhysics(source);
+    const renderer = (await readRegistry(source)).find(item => item.id === meta.renderer);
+    const engines = (meta.physics ?? []).map(id => physics.find(item => item.id === id)).filter(Boolean);
+    const copies = chosen.flatMap(component => {
+      if (component.id === 'renderers') return renderer ? [`src/renderers/${renderer.entry}`] : [];
+      if (component.id === 'physics') return engines.map(item => `src/physics/${item.entry}`);
+      return component.files;
+    }).map(item => ({ path: `${tools}/${item}`, from: path.join(source, item) }));
     // New renderers arrive with the renderers part. Their aliases are planned first, then applied with the copy.
     const wiring = chosen.some(component => component.id === 'renderers') ? await planRendererWiring(target) : { notes: [], edits: [] };
     await replaceItems(target, [...copies, { path: `${tools}/VERSION.json`, text }, ...wiring.edits], { onSwap });
@@ -482,12 +522,13 @@ export async function gameRenderer(gameRoot) {
 }
 
 /** Creates a game with any renderer in the framework's registry. `renderer` is a registry id (or 2d / 3d). */
-export async function createGame(directory, rendererArg) {
+export async function createGame(directory, rendererArg, physicsArg = 'none') {
   const registry = await readRegistry(source);
   const renderer = Object.hasOwn(legacyRenderers, rendererArg) ? legacyRenderers[rendererArg] : rendererArg;
   const entry = registry.find(item => item.id === renderer);
   if (!directory || !entry) throw new Error(`Usage: npm run create:game -- <new-directory> <${registry.map(item => item.id).join('|')}>`);
   const target = path.resolve(directory);
+  if (physicsArg !== 'none' && !(await readPhysics(source)).some(item => item.id === physicsArg)) throw new Error(`Unknown physics engine: ${physicsArg}`);
   try { await access(target); throw new Error(`Destination already exists: ${target}`); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   const name = path.basename(target).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/^-+|-+$/g, '') || 'my-game';
@@ -495,8 +536,16 @@ export async function createGame(directory, rendererArg) {
 
   // Copy the framework into the game so it never depends on this checkout after generation.
   await mkdir(path.join(target, 'src'), { recursive: true });
-  for (const item of frameworkFiles) await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
-  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, renderer: entry.id, copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes, example: { files: await exampleHashesFor(entry) } }, null, 2) + '\n');
+  const physicsEntry = physicsArg === 'none' ? undefined : (await readPhysics(source)).find(item => item.id === physicsArg);
+  for (const item of gameFiles(entry, physicsEntry)) {
+    await mkdir(path.dirname(path.join(target, tools, item)), { recursive: true });
+    await cp(path.join(source, item), path.join(target, tools, item), { recursive: true });
+  }
+  // Each game's registries list only what it uses, so the game never offers engines it doesn't have.
+  await writeFile(path.join(target, tools, 'src/renderers/registry.json'), JSON.stringify({ renderers: [entry] }, null, 2) + '\n');
+  await mkdir(path.join(target, tools, 'src/physics'), { recursive: true });
+  await writeFile(path.join(target, tools, 'src/physics/registry.json'), JSON.stringify({ physics: physicsEntry ? [physicsEntry] : [] }, null, 2) + '\n');
+  await writeFile(path.join(target, tools, 'VERSION.json'), JSON.stringify({ framework: own.name, version: own.version, renderer: entry.id, physics: physicsArg === 'none' ? [] : [physicsArg], copiedAt: new Date().toISOString(), components: (await frameworkVersion()).hashes, example: { files: await exampleHashesFor(entry) } }, null, 2) + '\n');
 
   const scripts = {};
   for (const [key, value] of Object.entries(own.scripts)) if (key.includes(':') && !['create:game', 'export:ui'].includes(key)) scripts[key] = value;
