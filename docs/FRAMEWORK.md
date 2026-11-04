@@ -12,7 +12,7 @@ import { createPixiRenderer } from 'gameframework/pixi'; // 2D
 // Optional desktop integration: 'gameframework/desktop'
 ```
 
-PixiJS, Three.js and the Tauri API are optional peer dependencies (Canvas 2D needs none). See [Renderers](RENDERERS.md). The generator installs the selected renderer and Tauri API. For an existing Vite game, install the renderer/native packages you import yourself.
+PixiJS, Three.js and the Tauri API are optional peer dependencies (Canvas 2D needs none). See [Renderers](RENDERERS.md). Optional physics engines are imported from `gameframework/physics/planck` or `gameframework/physics/matter`; see [Physics](PHYSICS.md). The generator installs the selected renderer, the selected physics engine and the Tauri API. For an existing Vite game, install the packages you import yourself.
 
 ## A small game loop
 
@@ -110,6 +110,81 @@ mixer.setBuffer('jump', assets.sound('jump'));
 - `signal` cancels loading and rejects with `AssetLoadCancelled`. Files that finished are released.
 - Images are `ImageBitmap`s, decoded with `fetch` and `createImageBitmap`. Pass `loaders` to replace either kind of loader, for example in tests.
 - `dispose()` closes the images. Lookups after that throw.
+
+## Timers
+
+```ts
+const timers = createTimers();
+timers.after(2, () => showHint());
+const stopBlink = timers.every(0.5, () => toggleCursor());
+timers.update(dt);   // call each frame with the same dt as the loop
+stopBlink();         // stop one timer
+timers.clear();      // stop all of them, when a screen closes
+```
+
+- Times are seconds on the game's own clock. Delays must be positive.
+- A repeating timer keeps its leftover time, so it does not drift. After a long stall it runs once for each interval it missed.
+- Clear timers when a screen closes, so nothing from the old screen fires on the new one.
+
+## Seeded random
+
+```ts
+const random = createRandom(levelSeed);
+const roll = random.int(1, 6);       // whole numbers, both ends included
+const x = random.range(0, 800);      // decimals, end excluded
+const drop = random.pick(['coin', 'gem']);
+```
+
+- The same seed gives the same sequence. Store the seed to replay a level or reproduce a reported bug.
+- Use `Math.random` for anything that does not need to repeat.
+
+## Animation frames
+
+```ts
+const walk = createFrameAnimation(walkFrames, { fps: 8 });          // loops by default
+walk.update(dt);
+sprite.texture = walk.frame;
+
+const boom = createFrameAnimation(boomFrames, { fps: 12, loop: false });
+if (boom.done) remove();   // true once the last frame has shown for its full time
+```
+
+- Frames can be any type: images from the asset loader, texture names, or numbers.
+- The frame shown depends only on elapsed time, so a stall does not make the animation slow down.
+
+## Tweens and easing
+
+```ts
+const panel = { x: -300, alpha: 0 };
+const slideIn = tween(panel, { x: 0, alpha: 1 }, 0.4, {
+  easing: easing.easeOutBack,
+  onDone: () => showButtons(),
+});
+slideIn.update(dt);  // call each frame
+slideIn.cancel();    // stops where it is and skips onDone
+```
+
+- Only numeric properties can be tweened. Each property starts from its value when the tween is created.
+- Easings: `linear`, `easeIn`, `easeOut`, `easeInOut`, `easeOutBack` (overshoots) and `easeOutBounce`.
+- Two tweens on the same property fight over it. Cancel the first one before starting another.
+
+## Localization
+
+```ts
+const text = createLocalizer({
+  en: { play: 'Play', score: 'Score: {points}' },
+  fr: { play: 'Jouer' },
+} as const);
+
+text.t('play');                    // "Play"
+text.setLocale('fr');
+text.t('play');                    // "Jouer"
+text.t('score', { points: 40 });   // "Score: 40", falling back to English
+```
+
+- A key missing in the chosen language falls back to the first language. A key missing everywhere is shown as the key, so it stands out.
+- Declare the tables `as const` and a misspelled key is a compile error.
+
 ## Lifecycle, viewport and diagnostics
 
 - `AppLifecycle(onPause)` coalesces blur, page-hide and hidden-document signals. `resume()` acknowledges return and rejects while hidden. Native-wrapper-specific interruptions may need forwarding by a platform adapter.

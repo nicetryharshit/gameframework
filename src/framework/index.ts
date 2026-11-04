@@ -13,3 +13,8 @@ export * from './debug';
 export * from './mixer';
 export * from './settings';
 export * from './assets';
+export * from './timers';
+export * from './random';
+export * from './animation';
+export * from './tween';
+export * from './localization';

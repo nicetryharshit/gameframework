@@ -35,7 +35,11 @@ Developers get a playable build for every target without installing toolchains w
 - [x] Honest release labels: desktop release builds say "unsigned", and Android release says "needs signing".
 - [x] Page titles: the workshop says "Workshop", and each game's dashboard and page use the game's name.
 - [x] Removed the `2d.html` and `3d.html` entry pages, the CI example template, `scripts/benchmark.ts` and the old `2d`/`3d` renderer names.
-- [x] `npm test` covers the generator, the wiring check, the physics adapters and the dashboard. Last full run on the developer's machine: 68 of 70 passed. Both failures are fixed in the code; a rerun is pending.
+- [x] `npm test` covers the generator, the wiring check, the physics adapters and the dashboard. The full suite passed (78 of 78) on the developer's machine after the asset loader was added. The core helper tests and the export check are new and still need a run.
+- [x] Asset loader (`loadAssets`): async loading with progress, failures that name the file, cancellation, and tests from a generated game. The example's sounds load through it.
+- [x] Core helpers, each its own module: timers, seeded random, animation frames, tweens with easing, and localization.
+- [x] Physics engines are wired: New game picks one, and Update tools adds or removes it.
+- [x] Page titles: the workshop says "Workshop", and each game's dashboard shows the game's name.
 
 ## Dashboard, first pass (done)
 

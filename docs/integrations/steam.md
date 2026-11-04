@@ -25,9 +25,9 @@ The steps below are a summary. Check the current Steamworks documentation and fe
 
 Do not commit anything in `vendor/`. It is ignored by Git on purpose.
 
-## 3. Enable Steam for a profile
+## 3. Find the Steam add-on
 
-Add `"steam"` to the `integrations` list in the desktop profiles in `export-profiles.json`, and fill in the App ID. Keep the App ID in the profile, not in code. Steam credentials stay in environment variables and are never written to the repo.
+Open **Steam** in Game Workshop. Its checklist turns ready when the SDK is in `vendor/steamworks/sdk`. The framework does not store your App ID yet, so add it to your game when you connect the SDK. Keep Steam credentials in environment variables, never in the repo.
 
 ## 4. Development builds
 
@@ -35,7 +35,7 @@ Steam needs the Steam client running to test. For local runs, put a `steam_appid
 
 ## 5. Upload
 
-Steam builds are uploaded with SteamCMD, using the depot build script that the export pipeline generates. The upload needs your Steamworks username and password, or a Steam Guard code, through environment variables. Check the current SteamCMD documentation for the exact commands.
+Uploads are not automated yet. Upload your builds with SteamCMD, following its current documentation, and supply your Steamworks login through environment variables, not in the repo.
 
 ## Platform notes
 

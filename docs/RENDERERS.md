@@ -24,11 +24,15 @@ const view = createCanvasRenderer(document.getElementById('app')!, { background:
 
 In the framework dashboard open **Games**, then **Update tools** on the game, then **Add** next to the renderer. This:
 
-1. copies the framework's `src/renderers` into the game's `tools/gameframework/` if it is not there yet,
+1. copies that renderer's file into the game's `tools/gameframework/src/renderers/` if it is not there yet,
 2. maps `gameframework/<id>` in the game's `tsconfig.json` and `vite.config.ts`,
 3. adds the renderer's packages to the game's `package.json` at the versions the framework uses.
 
-It does not run npm. Open the game's dashboard and use **Install dependencies**. Adding a renderer twice changes nothing. Updating the **Renderers** part also maps any renderer added to the framework since the game was created.
+It does not run npm. Open the game's dashboard and use **Install dependencies**. Adding a renderer twice changes nothing. Updating the **Renderers** part refreshes only the renderer the game already uses; it does not add others.
+
+## Removing a renderer from a game
+
+In **Update tools**, click **Remove** next to a renderer the game has. This deletes that renderer's file, alias and packages from the game. Removal is refused while game code still imports the renderer, and a game always keeps at least one renderer.
 
 ## Adding a renderer to the framework
 
@@ -36,7 +40,7 @@ It does not run npm. Open the game's dashboard and use **Install dependencies**.
 2. Add a demo scene `src/demo-<id>.ts` that imports the renderer from `./renderers/<id>` and add it to `package.json` `files`.
 3. Add an entry to `src/renderers/registry.json` (`id`, `label`, `kind`, `entry`, `demo`, `note`, `packages`, and `devPackages` for type packages). New games and the New game form pick it up automatically.
 4. Add the packages to the framework's `devDependencies` so the version is pinned in one place, and an export in `package.json` (`"./<id>": "./src/renderers/<id>.ts"`).
-5. Add a test. New games map every registry entry automatically.
+5. Add a test. A new game carries only its chosen renderer, and the New game form lists every registry entry.
 
 ## Alternatives worth considering
 
