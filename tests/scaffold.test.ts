@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -110,6 +110,47 @@ test('a failed update puts every part back exactly as it was', async () => {
     // The game still updates normally afterwards.
     await updateGame(target);
     assert.equal((await inspectGame(target)).outdated, false);
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('an update interrupted partway is undone on the next run', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-interrupted-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    const root = path.join(target, tools);
+    await writeFile(path.join(root, 'src/framework/index.ts'), '// stale core');
+    await writeFile(path.join(root, 'docs/FRAMEWORK.md'), '// stale docs');
+    const before = await snapshot(root);
+    // Simulate the app closing after the core was swapped in but before the docs were.
+    const work = path.join(root, '.update');
+    await mkdir(path.join(work, 'new/src'), { recursive: true });
+    await mkdir(path.join(work, 'new/docs'), { recursive: true });
+    await mkdir(path.join(work, 'old/src'), { recursive: true });
+    await writeFile(path.join(work, 'new/docs/FRAMEWORK.md'), '// new docs');
+    await writeFile(path.join(work, 'manifest.json'), JSON.stringify(['src/framework', 'docs']));
+    await rename(path.join(root, 'src/framework'), path.join(work, 'old/src/framework'));
+    await mkdir(path.join(work, 'new/src/framework'), { recursive: true });
+    await writeFile(path.join(work, 'new/src/framework/index.ts'), '// half-copied core');
+    await rename(path.join(work, 'new/src/framework'), path.join(root, 'src/framework'));
+    // The next run finishes the cleanup: the core goes back, the docs were never touched, and the old files are restored.
+    await assert.rejects(updateGame(target, undefined, { onSwap: () => { throw new Error('stop here'); } }), /stop here/);
+    assert.deepEqual(await snapshot(root), before);
+    await assert.rejects(access(work));
+  } finally { await rm(temp, { recursive: true, force: true }); }
+});
+
+test('a failed renderer config edit restores the game config', async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), 'webgame-config-'));
+  try {
+    const target = path.join(temp, 'game');
+    await createGame(target, '2d');
+    await writeFile(path.join(target, 'tsconfig.json'), '{ "compilerOptions": ');
+    const config = await readFile(path.join(target, 'tsconfig.json'), 'utf8');
+    const vite = await readFile(path.join(target, 'vite.config.ts'), 'utf8');
+    await assert.rejects(updateGame(target, ['renderers']));
+    assert.equal(await readFile(path.join(target, 'tsconfig.json'), 'utf8'), config);
+    assert.equal(await readFile(path.join(target, 'vite.config.ts'), 'utf8'), vite);
   } finally { await rm(temp, { recursive: true, force: true }); }
 });
 

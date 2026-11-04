@@ -276,7 +276,17 @@ export async function updateGame(directory, only, { onSwap } = {}) {
   await replaceItems(target, [...copies, { path: 'VERSION.json', text }], { onSwap });
 
   // New renderers arrive with the renderers part. Map their aliases so they are ready to import.
-  const notes = chosen.some(component => component.id === 'renderers') ? await wireRenderers(target) : [];
+  // Config edits happen after the swap. If they fail, the game's config goes back to how it was.
+  let notes = [];
+  if (chosen.some(component => component.id === 'renderers')) {
+    const configFiles = ['tsconfig.json', 'vite.config.ts'].map(name => path.join(target, name));
+    const originals = await Promise.all(configFiles.map(file => readFile(file, 'utf8').catch(() => undefined)));
+    try { notes = await wireRenderers(target); }
+    catch (error) {
+      await Promise.all(configFiles.map((file, index) => originals[index] === undefined ? undefined : writeFile(file, originals[index])));
+      throw error;
+    }
+  }
   return { from: before.version, to: everything ? framework.version : before.version, updated: chosen.map(component => component.id), notes };
 }
 
