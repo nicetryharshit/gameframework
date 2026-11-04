@@ -12,3 +12,4 @@ export * from './lifecycle';
 export * from './debug';
 export * from './mixer';
 export * from './settings';
+export * from './assets';

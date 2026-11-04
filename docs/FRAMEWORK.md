@@ -88,6 +88,28 @@ Use the optional `AudioMixer` for new games:
 
 Decoded buffers suit short assets. Large music files may need streaming. `AudioPlayer` is deprecated but remains exported for compatibility.
 
+## Assets
+
+`loadAssets` loads a game's images and sounds before it starts. List each file once in a manifest, await the result, then look files up by name:
+
+```ts
+const assets = await loadAssets({
+  hero: { kind: 'image', url: hero },   // hero is a URL, for example from import hero from "./hero.png"
+  jump: { kind: 'sound', url: jump },
+} as const, {
+  audio: audioContext,                  // needed for sound files
+  onProgress: ({ loaded, total }) => bar.set(loaded / total),
+  signal: abort.signal,                 // optional: cancels loading
+});
+assets.image('hero');                  // ImageBitmap, with width and height
+mixer.setBuffer('jump', assets.sound('jump'));
+```
+
+- Declare the manifest `as const`. Then a misspelled name is a compile error, and a sound name passed to `image` is too.
+- Loading stops at the first failed file. The error names that file and its URL, and `failures` lists what actually failed.
+- `signal` cancels loading and rejects with `AssetLoadCancelled`. Files that finished are released.
+- Images are `ImageBitmap`s, decoded with `fetch` and `createImageBitmap`. Pass `loaders` to replace either kind of loader, for example in tests.
+- `dispose()` closes the images. Lookups after that throw.
 ## Lifecycle, viewport and diagnostics
 
 - `AppLifecycle(onPause)` coalesces blur, page-hide and hidden-document signals. `resume()` acknowledges return and rejects while hidden. Native-wrapper-specific interruptions may need forwarding by a platform adapter.
