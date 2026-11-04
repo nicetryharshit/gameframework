@@ -138,7 +138,8 @@ export async function createGameOptions() {
         void mixer.unlock().catch(() => {});
       } catch { /* Audio is optional when unavailable. */ }
     },
-    sound(name: string) { mixer?.play(name); },
+    // Sounds load in the background after the first tap. A sound asked for before it has loaded is skipped.
+    sound(name: string) { if (mixer?.has(name)) mixer.play(name); },
     suspend() { void mixer?.suspend().catch(() => {}); },
     navigate(input: Input) {
       const control = document.activeElement as HTMLInputElement | HTMLSelectElement;

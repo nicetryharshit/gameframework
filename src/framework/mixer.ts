@@ -31,6 +31,8 @@ export class AudioMixer {
     if (!Number.isFinite(value)) throw new Error('Invalid volume');
     (bus === 'master' ? this.master : this.buses[bus]).gain.setValueAtTime(Math.max(0, Math.min(1, value)), this.context.currentTime);
   }
+  /** True once a sound is loaded or set, so a game can skip a sound that is still loading. */
+  has(name: string): boolean { return this.buffers.has(name); }
   play(name: string, bus: AudioBus = 'effects', loop = false): Voice | undefined {
     const buffer = this.buffers.get(name); if (!buffer) throw new Error(`Unknown audio: ${name}`);
     if (this.voices.size >= this.maxVoices || this.context.state !== 'running') return undefined;
