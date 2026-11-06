@@ -19,7 +19,7 @@ const core = [];
 const check = (name, ok, detail = '') => { core.push({ name, ok: Boolean(ok), detail }); return ok; };
 
 const major = Number(process.versions.node.split('.')[0]);
-check('Node.js 22 or newer', major >= 22, process.version);
+check('Node.js 24 or newer', major >= 24, process.version);
 check('Dependencies installed', existsSync(path.join(root, 'node_modules', 'typescript')), 'run npm ci if this fails');
 if (core.every(item => item.ok)) {
   check('TypeScript type check', run('npm', ['exec', '--', 'tsc', '--noEmit'], { stdio: 'inherit' }).status === 0);

@@ -4,7 +4,7 @@ A starter for browser games made with **PixiJS (2D)**, **Three.js (3D)** or a de
 
 ## Set up
 
-You need one thing installed first: **[Node.js 22 or newer](https://nodejs.org/)**. The launcher checks for it and opens the download page if it's missing. You don't need anything else for web games.
+You need one thing installed first: **[Node.js 24 or newer](https://nodejs.org/)**. The launcher checks for it and opens the download page if it's missing. You don't need anything else for web games.
 
 1. **Open Game Workshop.**
    - **Mac:** double-click `Game Workshop.command`. If macOS blocks it, right-click it and choose **Open**.

@@ -529,7 +529,7 @@ async function writeLaunchers(directory, serverPath) {
   const windows = serverPath.replaceAll('/', '\\');
   const nodeCheck = (open, downloadPage) => [
     'if ! command -v node >/dev/null 2>&1; then',
-    '  echo "Game Workshop needs Node.js 22 or newer. Opening the download page..."',
+    '  echo "Game Workshop needs Node.js 24 or newer. Opening the download page..."',
     `  ${open} "https://nodejs.org/"`,
     '  echo "Install Node.js, then double-click this file again."',
     '  read -r -p "Press Enter to close..." _',
@@ -539,7 +539,7 @@ async function writeLaunchers(directory, serverPath) {
   const files = {
     'Game Workshop.command': ['#!/bin/sh', 'cd "$(dirname "$0")" || exit 1', ...nodeCheck('open'), `node "${posix}" --open`, ''].join('\n'),
     'Game Workshop.sh': ['#!/bin/sh', 'cd "$(dirname "$0")" || exit 1', ...nodeCheck('xdg-open'), `node "${posix}" --open`, ''].join('\n'),
-    'Game Workshop.bat': ['@echo off', 'cd /d "%~dp0"', 'where node >nul 2>nul', 'if errorlevel 1 (', '  echo Game Workshop needs Node.js 22 or newer. Opening the download page...', '  start https://nodejs.org/', '  echo Install Node.js, then double-click this file again.', '  pause', '  exit /b 1', ')', `node "${windows}" --open`, 'if errorlevel 1 pause', ''].join('\r\n')
+    'Game Workshop.bat': ['@echo off', 'cd /d "%~dp0"', 'where node >nul 2>nul', 'if errorlevel 1 (', '  echo Game Workshop needs Node.js 24 or newer. Opening the download page...', '  start https://nodejs.org/', '  echo Install Node.js, then double-click this file again.', '  pause', '  exit /b 1', ')', `node "${windows}" --open`, 'if errorlevel 1 pause', ''].join('\r\n')
   };
   for (const [name, text] of Object.entries(files)) {
     const file = path.join(directory, name);
@@ -829,7 +829,7 @@ This game is self-contained. The framework is copied into \`${tools}/\`, so you 
 
 ## Get started
 
-1. Install [Node.js 22 or newer](https://nodejs.org/) if you don't have it.
+1. Install [Node.js 24 or newer](https://nodejs.org/) if you don't have it.
 2. Double-click \`Game Workshop.command\` (Mac), \`Game Workshop.bat\` (Windows) or \`Game Workshop.sh\` (Linux). If your computer blocks it, right-click it and choose Open (Mac), or choose More info and then Run anyway (Windows).
 3. In Game Workshop, click **Play in browser** (top right of the overview). Install dependencies first if the Web row asks you to.
 

@@ -24,7 +24,7 @@ Developers get a playable build for every target without installing toolchains w
 - [x] Stray files removed: `windows-check.log`, the stale `dist/` from removed entry pages, and `export-profiles.json`, which is per-machine state now in `.gitignore`.
 - [x] `.gitattributes` sets one line-ending policy for macOS, Linux and Windows (LF in Git, CRLF for `.bat`).
 - [x] Versions: the framework, desktop shell and Cargo package are all 0.2.0. New games still start at 0.1.0, because that's the game's own version.
-- [x] Node: 22 or newer everywhere (README, launchers, `npm run doctor`, `package.json` `engines`). `planck@1.5.1` declares Node 24 in its metadata and npm prints a warning on install. Its tests pass on Node 22. Move the framework to Node 24 if this warning becomes a problem.
+- [x] Node: 24 or newer everywhere (README, launchers, `npm run doctor`, `package.json` `engines`, `@types/node`). This clears the `planck@1.5.1` engine warning, since planck declares Node 24.
 - [x] Git history: all commits use one author, `nicetryharshit`. The old identities were rewritten locally and need a force-push to GitHub.
 - [x] No CI, by choice.
 
@@ -47,7 +47,7 @@ Developers get a playable build for every target without installing toolchains w
 - [x] Honest release labels: desktop release builds say "unsigned", and Android release says "needs signing".
 - [x] Page titles: the workshop says "Workshop", and each game's dashboard and page use the game's name.
 - [x] Removed the `2d.html` and `3d.html` entry pages, the CI example template, `scripts/benchmark.ts` and the old `2d`/`3d` renderer names.
-- [x] `npm test` covers the generator, the wiring check, the physics adapters and the dashboard. All 132 tests pass on Linux with Node 22 after a clean `npm ci`. Mac and Windows still need a run.
+- [x] `npm test` covers the generator, the wiring check, the physics adapters and the dashboard. All 132 tests passed on Linux with Node 22 after a clean `npm ci`. Re-run on Node 24 on Linux, Mac and Windows.
 - [x] Asset loader (`loadAssets`): async loading with progress, failures that name the file, cancellation, and tests from a generated game. The example's sounds load through it.
 - [x] Core helpers, each its own module: timers, seeded random, animation frames, tweens with easing, and localization. Their tests run in `npm test`.
 - [x] Physics engines are wired: New game picks one, and Update tools adds or removes it.
