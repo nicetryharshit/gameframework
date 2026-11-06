@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 export const STEAM_SETTINGS = 'steam.json';
 /** The framework this dashboard runs from: the source of the Steam code that Add Steam support copies into games. */
 export const FRAMEWORK_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+/** Templates for Add Steam support. They live beside this dashboard, so every game copy has them. */
+export const STEAM_TEMPLATE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'steam-template');
 export const DESKTOP_PLATFORMS = ['windows', 'macos', 'linux'];
 // Steam App IDs are positive whole numbers.
 const APP_ID = /^[1-9]\d{0,9}$/;
@@ -196,11 +198,15 @@ export function steamRuntimeStep(root, platform) {
  */
 export async function addSteamToGame(root, frameworkRoot = FRAMEWORK_ROOT, { dryRun = false } = {}) {
   const sources = {
-    rust: path.join(frameworkRoot, 'src-tauri', 'src', 'steam.rs'),
+    rust: path.join(STEAM_TEMPLATE, 'steam.rs'),
+    build: path.join(STEAM_TEMPLATE, 'build.rs'),
     desktop: path.join(frameworkRoot, 'src', 'platform', 'desktop.ts')
   };
-  if (!(await exists(sources.rust)) || !(await exists(sources.desktop))) {
-    throw new Error(`Could not find the Steam files in ${frameworkRoot}. Open Game Workshop from the framework folder and try again.`);
+  if (!(await exists(sources.rust)) || !(await exists(sources.build))) {
+    throw new Error('Could not find the Steam code templates in Game Workshop (scripts/export-ui/steam-template). Update tools in Game Workshop and try again.');
+  }
+  if (!(await exists(sources.desktop))) {
+    throw new Error(`Could not find src/platform/desktop.ts in ${frameworkRoot}. Update tools in Game Workshop and try again.`);
   }
   const manual = (file, what) => new Error(`Could not add Steam to ${file} automatically (${what}). Add the Steam lines by hand, following section 3 of docs/integrations/steam.md.`);
   const read = async file => readFile(path.join(root, file), 'utf8').catch(error => { if (error.code === 'ENOENT') return undefined; throw error; });
@@ -249,8 +255,8 @@ export async function addSteamToGame(root, frameworkRoot = FRAMEWORK_ROOT, { dry
     return next;
   });
 
-  const frameworkBuild = await readFile(path.join(frameworkRoot, 'src-tauri', 'build.rs'), 'utf8').catch(() => undefined);
-  if (!frameworkBuild) throw new Error(`Could not find src-tauri/build.rs in ${frameworkRoot}. Open Game Workshop from the framework folder and try again.`);
+  const frameworkBuild = await readFile(sources.build, 'utf8').catch(() => undefined);
+  if (!frameworkBuild) throw new Error('Could not read the Steam build script template. Update tools in Game Workshop and try again.');
   await plan('src-tauri/build.rs', build => {
     if (build === undefined) throw manual('src-tauri/build.rs', 'the file is missing');
     if (build.includes('copy_steam_runtime')) return build;

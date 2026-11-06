@@ -178,10 +178,63 @@ const MOBILE_TARGETS = {
   ios: ['aarch64-apple-ios', 'aarch64-apple-ios-sim', 'x86_64-apple-ios'],
   android: ['aarch64-linux-android', 'armv7-linux-androideabi', 'i686-linux-android', 'x86_64-linux-android']
 };
+/**
+ * Setup instructions for the computer Game Workshop is running on, so every command shown can be run as written.
+ * Windows commands are for PowerShell. Environment variables set with setx apply after Game Workshop is reopened.
+ */
+export function setupHelp(host = process.platform) {
+  const windows = host === 'win32';
+  const mac = host === 'darwin';
+  const profile = mac ? '~/.zshrc' : '~/.bashrc';
+  const reopen = 'then close and reopen Game Workshop';
+  return {
+    rust: windows
+      ? `Install Rust: in PowerShell run "winget install --id Rustlang.Rustup" (or run rustup-init.exe from rustup.rs), then "rustup default stable-msvc", ${reopen}`
+      : `Install Rust: run "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh", then open a new terminal and reopen Game Workshop`,
+    cargoPath: windows ? '%USERPROFILE%\\.cargo\\bin' : '~/.cargo/bin',
+    msvc: 'Install Visual Studio Build Tools with "Desktop development with C++". In PowerShell: winget install --id Microsoft.VisualStudio.2022.BuildTools --source winget --override "--add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows11SDK.22621"',
+    java: windows
+      ? `Install a JDK 17 or newer (Android Studio includes one). In PowerShell: setx JAVA_HOME "C:\\Program Files\\Android\\Android Studio\\jbr", ${reopen}`
+      : mac
+        ? `Install a JDK 17 or newer (Android Studio includes one). Add to ${profile}: export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
+        : `Install a JDK 17 or newer (for example: sudo apt install openjdk-17-jdk), then set JAVA_HOME in ${profile}`,
+    androidSdk: windows
+      ? `Install Android Studio. In PowerShell: setx ANDROID_HOME "$env:LOCALAPPDATA\\Android\\Sdk", ${reopen}`
+      : `Install Android Studio. Add to ${profile}: export ANDROID_HOME="$HOME/${mac ? 'Library/Android/sdk' : 'Android/Sdk'}"`,
+    androidNdk: windows
+      ? `In Android Studio: SDK Manager → SDK Tools → NDK (Side by side). In PowerShell: setx NDK_HOME "$env:LOCALAPPDATA\\Android\\Sdk\\ndk\\<version>", ${reopen}`
+      : `In Android Studio: SDK Manager → SDK Tools → NDK (Side by side). Add to ${profile}: export NDK_HOME="$ANDROID_HOME/ndk/<version>"`
+  };
+}
+/**
+ * Finds Rust even when Game Workshop was started before Rust was installed (its PATH is then stale).
+ * Looks in rustup's own folder as well, and adds that folder to PATH so later builds can use it.
+ * If rustup is there but no default toolchain is set, says so instead of a generic failure.
+ */
+export async function rustToolchain(host = process.platform) {
+  const rustc = await version('rustc', ['--version']);
+  if (rustc) return { rustc };
+  const bin = path.join(process.env.USERPROFILE || process.env.HOME || '', '.cargo', 'bin');
+  const ext = host === 'win32' ? '.exe' : '';
+  if (await exists(path.join(bin, `rustc${ext}`))) {
+    const found = await version(path.join(bin, `rustc${ext}`), ['--version']);
+    if (found) {
+      process.env.PATH = `${bin}${path.delimiter}${process.env.PATH ?? ''}`;
+      return { rustc: found };
+    }
+  }
+  if (await exists(path.join(bin, `rustup${ext}`))) {
+    const fix = host === 'win32'
+      ? 'Rust is installed, but no default toolchain is set. In PowerShell run "rustup default stable-msvc", then close and reopen Game Workshop.'
+      : 'Rust is installed, but no default toolchain is set. Run "rustup default stable", then reopen Game Workshop.';
+    return { detail: fix };
+  }
+  return {};
+}
 /** Tauri's mobile setup runs `rustup target add`, so rustup and the mobile targets must both be present. */
-async function rustupChecks(platform, add) {
+async function rustupChecks(platform, add, host) {
   const rustup = await version('rustup', ['--version']);
-  const note = 'Start Game Workshop from a terminal, or add ~/.cargo/bin to your PATH, if rustup is installed elsewhere.';
+  const note = `Start Game Workshop from a terminal, or add ${setupHelp(host).cargoPath} to your PATH, if rustup is installed elsewhere.`;
   add('rustup', !!rustup, rustup || `rustup was not found. Install it from rustup.rs. ${note}`);
   if (!rustup) return;
   const installed = (await output('rustup', ['target', 'list', '--installed'])) ?? '';
@@ -198,6 +251,7 @@ export async function checkPlatform(root, platform, host = process.platform, act
   if (platform === 'steam') return steamCheck(root);
   if (!platforms.includes(platform)) throw new Error('Unknown platform');
   const checks = [];
+  const help = setupHelp(host);
   const add = (name, ok, detail, blocking = true) => checks.push({ name, ok, detail, blocking });
   const hostNames = { win32: 'Windows', darwin: 'macOS', linux: 'Linux' };
   add('Build host', !hosts[platform] || hosts[platform] === host, `Current machine: ${hostNames[host] || host}${hosts[platform] ? ` · required: ${hostNames[hosts[platform]]}` : ''}`);
@@ -212,23 +266,24 @@ export async function checkPlatform(root, platform, host = process.platform, act
     try { tool(root, pkg); add(name, true, 'Installed'); } catch { add(name, false, 'Use Install dependencies to set this up'); }
   }
   if (platform !== 'web') {
-    const rust = await version('rustc', ['--version']); add('Rust toolchain', !!rust, rust || 'Install Rust: run "curl https://sh.rustup.rs -sSf | sh" (or see rustup.rs), then reopen the terminal');
+    const toolchain = await rustToolchain(host);
+    add('Rust toolchain', !!toolchain.rustc, toolchain.rustc || toolchain.detail || help.rust);
     add('Tauri configuration', await exists(path.join(root, 'src-tauri/tauri.conf.json')), 'src-tauri/tauri.conf.json');
-    if (MOBILE_TARGETS[platform]) await rustupChecks(platform, add);
+    if (MOBILE_TARGETS[platform]) await rustupChecks(platform, add, host);
   }
   if (platform === 'windows' && host === 'win32') {
     const vswhere = path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'Microsoft Visual Studio/Installer/vswhere.exe');
     const msvc = await version(vswhere, ['-latest', '-products', '*', '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath']);
-    add('MSVC build tools', !!msvc, msvc || 'Install Visual Studio Build Tools with the "Desktop development with C++" workload');
+    add('MSVC build tools', !!msvc, msvc || help.msvc);
   }
   if (platform === 'linux' && host === 'linux') {
     const webkit = await version('pkg-config', ['--modversion', 'webkit2gtk-4.1']);
     add('WebKitGTK', !!webkit, webkit || 'Install the WebKitGTK 4.1 dev package (e.g. sudo apt install libwebkit2gtk-4.1-dev)');
   }
   if (platform === 'android') {
-    const java = await version('java', ['-version']); add('Java', !!java, java || 'Install a JDK (17 or newer) and set JAVA_HOME to it');
-    add('Android SDK', !!process.env.ANDROID_HOME && await exists(process.env.ANDROID_HOME), process.env.ANDROID_HOME || 'Install Android Studio, then set ANDROID_HOME to its SDK folder (usually ~/Library/Android/sdk)');
-    add('Android NDK', !!process.env.NDK_HOME && await exists(process.env.NDK_HOME), process.env.NDK_HOME || 'In Android Studio: SDK Manager → SDK Tools → NDK (Side by side), then set NDK_HOME to it');
+    const java = await version('java', ['-version']); add('Java', !!java, java || help.java);
+    add('Android SDK', !!process.env.ANDROID_HOME && await exists(process.env.ANDROID_HOME), process.env.ANDROID_HOME || help.androidSdk);
+    add('Android NDK', !!process.env.NDK_HOME && await exists(process.env.NDK_HOME), process.env.NDK_HOME || help.androidNdk);
   }
   if (['ios', 'macos'].includes(platform) && host === 'darwin') {
     const xcode = await version('xcode-select', ['-p']); add('Apple build tools', !!xcode, xcode || 'Install Xcode from the App Store, then run "xcode-select --install"');
