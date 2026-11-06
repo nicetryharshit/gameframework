@@ -20,3 +20,8 @@ vendor/*
 
 # macOS Finder metadata
 .DS_Store
+
+# Local per-machine state and logs
+export-profiles.json
+.export-profiles.*.tmp
+*.log
