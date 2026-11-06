@@ -57,8 +57,9 @@ test('mobile checks require rustup and the mobile targets, not just rustc', asyn
   try {
     await writeFile(path.join(root, 'package.json'), JSON.stringify({ name: 'g', version: '0.1.0' }));
     // Simulate a machine with rustc but no rustup on the PATH the dashboard sees.
-    const saved = process.env.PATH;
-    process.env.PATH = root;
+    // The dashboard also looks in %USERPROFILE%/.cargo/bin (or $HOME/.cargo/bin), so point USERPROFILE at an empty folder.
+    const saved = { PATH: process.env.PATH, USERPROFILE: process.env.USERPROFILE };
+    process.env.PATH = root; process.env.USERPROFILE = root;
     try {
       const result = await checkPlatform(root, 'ios', 'darwin');
       const rustup = result.checks.find((item: { name: string }) => item.name === 'rustup');
@@ -66,7 +67,7 @@ test('mobile checks require rustup and the mobile targets, not just rustc', asyn
       assert.equal(rustup.ok, false);
       assert.match(rustup.detail, /rustup was not found.*rustup\.rs/);
       assert.equal(result.checks.some((item: { name: string }) => item.name === 'Rust mobile targets'), false, 'targets are only checked once rustup exists');
-    } finally { process.env.PATH = saved; }
+    } finally { for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } }
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
