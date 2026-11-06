@@ -23,6 +23,7 @@ export function validateIosSettings(value) {
   const out = {};
   const text = (key, max) => { const v = value[key]; if (v === undefined || v === null || String(v).trim() === '') return; const t = String(v).trim(); if (t.length > max) throw new Error(`Keep ${key} to ${max} characters`); out[key] = t; };
   text('displayName', 80);
+  if (out.displayName && /["\\\u0000-\u001f]/.test(out.displayName)) throw new Error('iOS display name cannot contain quotes, backslashes or control characters');
   if (value.identifier) { const id = String(value.identifier).trim(); if (!IDENTIFIER.test(id)) throw new Error('iOS bundle identifier must look like com.studio.game'); out.identifier = id; }
   if (value.buildNumber) { const b = String(value.buildNumber).trim(); if (!/^\d+(\.\d+){0,2}$/.test(b)) throw new Error('Build number must be a whole number such as 1, or 1.2.3'); out.buildNumber = b; }
   if (value.minimumVersion) { const m = String(value.minimumVersion).trim(); if (!/^\d+(\.\d+)?$/.test(m)) throw new Error('Minimum iOS version must look like 15.0'); out.minimumVersion = m; }
@@ -31,6 +32,7 @@ export function validateIosSettings(value) {
 export function validateProfile(value) {
   if (!value || !platforms.includes(value.platform) || !['development', 'release'].includes(value.mode)) throw new Error('Invalid platform or build mode');
   if (typeof value.name !== 'string' || !value.name.trim() || value.name.length > 80) throw new Error('App name must be 1–80 characters');
+  if (/["\\\u0000-\u001f]/.test(value.name)) throw new Error('App name cannot contain quotes, backslashes or control characters');
   if (!/^\d+\.\d+\.\d+$/.test(value.version)) throw new Error('Use a version such as 1.0.0');
   if (!IDENTIFIER.test(value.identifier)) throw new Error('Use a bundle identifier such as com.studio.game');
   const ios = value.platform === 'ios' ? validateIosSettings(value.ios) : undefined;
