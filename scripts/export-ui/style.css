@@ -116,6 +116,8 @@ tbody tr.click td:first-child{padding-left:8px}
 .form.wide [data-preview]{grid-column:1/-1;order:5}
 @media (max-width:700px){.form.wide{grid-template-columns:1fr}.app{grid-template-columns:200px 1fr}main{padding:24px 20px 60px}}
 label,.field{font-size:12px;color:var(--muted);display:grid;gap:6px}
+label.check{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--text)}
+label.check input{width:16px;height:16px;margin:0}
 input[type=text],input:not([type]){height:var(--control);background:transparent;border:1px solid var(--line);border-radius:var(--radius);padding:0 12px;color:var(--text);font:14px var(--mono);outline:0;width:100%}
 input:focus{border-color:var(--accent)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius);height:var(--control);padding:3px}
@@ -169,3 +171,12 @@ dialog.wide .dialog-foot{display:flex;gap:10px;flex:none;padding:16px 24px;borde
 .danger-zone h3{font:11px var(--mono);font-weight:400;color:var(--bad);letter-spacing:.04em;text-transform:lowercase;margin:0}
 .btn.danger{color:var(--bad);border-color:var(--bad)}
 .hint.small{font-size:12px;margin-top:6px}
+
+.output-panel{display:grid;gap:14px;margin-top:8px}
+.output-panel h3{font-size:14px;margin:0}
+.output-group{display:grid;gap:6px;padding:12px 14px;border:1px solid var(--line);border-radius:var(--radius)}
+.output-group h4{font-size:13px;margin:0}
+.output-group p{margin:0}
+.output-file{display:flex;justify-content:space-between;gap:12px;align-items:baseline;font-size:13px}
+.folder-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.folder-path{font:12px var(--mono);word-break:break-all;color:var(--muted);flex:1 1 auto}

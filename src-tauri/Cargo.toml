@@ -17,7 +17,12 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.7.4", features = [] }
 
+[features]
+# Steamworks achievements and stats. Needs the Steamworks SDK in vendor/steamworks/sdk; see docs/integrations/steam.md.
+steam = ["dep:steamworks"]
+
 [dependencies]
+steamworks = { version = "0.13.1", optional = true }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"

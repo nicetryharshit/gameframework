@@ -500,6 +500,109 @@ function renderOverview() {
   return view;
 }
 
+/* ---------- Steam settings ---------- */
+/** Unsaved edits to the Steam settings card. Cleared on save and on Discard. */
+let steamDraft = null;
+
+/** The App ID from Steamworks, and whether desktop builds include Steam. Nothing here needs the SDK or a Steam account. */
+function steamSettingsCard() {
+  const card = el('div', 'card');
+  const saved = state.steam ?? { appId: '', buildWithSteam: false };
+  const draft = steamDraft ?? saved;
+  const feature = checks.steam?.checks.find(item => item.name === 'Steam feature in the game');
+  const code = checks.steam?.checks.find(item => item.name === 'Steam code up to date');
+  if ((feature && !feature.ok) || (code && !code.ok)) {
+    const adding = feature && !feature.ok;
+    const add = el('div', 'steam-add');
+    add.append(el('h2', '', adding ? 'Add Steam support' : 'Update Steam support'));
+    add.append(el('p', 'hint', adding
+      ? 'This game was made before the Steam code existed. This adds the Steam code, the runtime copy and a debug-only test panel. Your original files are kept next to them as .before-steam.'
+      : 'Some Steam pieces in this game are missing or older than the framework’s. This brings them up to date. Your original files are kept next to them as .before-steam.'));
+    add.append(button(adding ? 'Add Steam support to this game' : 'Update Steam support', () => addSteamToThisGame(), 'btn primary'));
+    card.append(add);
+  }
+  card.append(el('h2', '', 'Settings'));
+  const form = el('form', 'form'); form.id = 'steam-settings';
+  const appWrap = el('label', '', 'Steam App ID');
+  const appInput = el('input'); appInput.name = 'appId'; appInput.value = draft.appId; appInput.placeholder = 'e.g. 480'; appInput.maxLength = 10; appInput.inputMode = 'numeric';
+  appInput.addEventListener('input', () => { steamDraft = { ...(steamDraft ?? saved), appId: appInput.value }; });
+  appWrap.append(appInput, el('small', 'muted small', 'A whole number from your Steamworks partner site. Steam stays off until you enter one.'));
+  const toggleWrap = el('label', 'check');
+  const toggle = el('input'); toggle.type = 'checkbox'; toggle.name = 'buildWithSteam'; toggle.checked = draft.buildWithSteam;
+  toggle.addEventListener('change', () => { steamDraft = { ...(steamDraft ?? saved), buildWithSteam: toggle.checked }; });
+  toggleWrap.append(toggle, ' Build desktop games with Steam');
+  const row = el('div', 'row-actions');
+  row.append(button('Save Steam settings', () => saveSteamSettings(), 'btn primary'));
+  if (steamDraft) row.append(button('Discard changes', () => { steamDraft = null; draw(true); }, 'link'));
+  form.append(appWrap, toggleWrap, row);
+  form.addEventListener('submit', event => { event.preventDefault(); void saveSteamSettings(); });
+  card.append(form);
+  card.append(steamSdkSection());
+  return card;
+}
+
+/** Unsaved path typed into the SDK field. Kept across redraws, cleared after a successful install. */
+let steamSdkDraft = '';
+
+function steamSdkSection() {
+  const section = el('div', 'steam-sdk');
+  section.append(el('h2', '', 'Steamworks SDK'));
+  const form = el('form', 'form'); form.id = 'steam-sdk-form';
+  const wrap = el('label', '', 'Folder with the unzipped SDK');
+  const input = el('input'); input.name = 'sdkPath'; input.value = steamSdkDraft; input.placeholder = 'e.g. C:\\Users\\you\\Downloads\\steamworks_sdk';
+  input.addEventListener('input', () => { steamSdkDraft = input.value; });
+  wrap.append(input, el('small', 'muted small', 'Browse to the folder you unzipped, or paste its path. It can be the top folder or the sdk folder inside it (for example steamworks_sdk_165\\sdk); the dashboard finds it. It is copied into this game’s vendor folder.'));
+  const row = el('div', 'row-actions');
+  row.append(button('Browse…', () => browseForSdk(), 'btn'), button('Install SDK from this folder', () => installSteamSdkFromFolder(), 'btn primary'));
+  form.append(wrap, row);
+  form.addEventListener('submit', event => { event.preventDefault(); void installSteamSdkFromFolder(); });
+  section.append(form);
+  return section;
+}
+
+async function addSteamToThisGame() {
+  say('Adding Steam support to this game…');
+  try {
+    const result = await api('add-steam', {});
+    say(result.changed.length ? `Steam support added. Changed: ${result.changed.join(', ')}. Originals are saved as .before-steam.` : 'Steam support is already in this game.');
+    await loadCheck('steam', true);
+  } catch (error) { say(error.message); }
+  draw(true);
+}
+
+async function browseForSdk() {
+  say('Choose the unzipped SDK folder in the window that opened.');
+  try {
+    const result = await api('pick-folder', {});
+    if (result.path) steamSdkDraft = result.path;
+    say(result.path ? `Selected ${result.path}. Click Install SDK from this folder.` : 'No folder chosen.');
+  } catch (error) { say(error.message); }
+  draw(true);
+}
+
+async function installSteamSdkFromFolder() {
+  try {
+    const result = await api('steam-sdk', { path: steamSdkDraft });
+    steamSdkDraft = '';
+    const where = result.foundIn && result.foundIn !== '.' ? ` (found in ${result.foundIn})` : '';
+    say(`Steamworks SDK copied into ${result.destination}${where}.`);
+    await loadCheck('steam', true);
+  } catch (error) { say(error.message); }
+  draw(true);
+}
+
+async function saveSteamSettings() {
+  const settings = steamDraft ?? state.steam ?? { appId: '', buildWithSteam: false };
+  try {
+    await api('steam-settings', { settings: { appId: String(settings.appId ?? '').trim(), buildWithSteam: !!settings.buildWithSteam } });
+    steamDraft = null;
+    state = await api('state');
+    say('Steam settings saved.');
+    await loadCheck('steam', true);
+  } catch (error) { say(error.message); }
+  draw(true);
+}
+
 /* ---------- iOS project settings ---------- */
 /** Unsaved edits to the iOS settings card. Cleared on save and when the user leaves the iOS page. */
 let iosDraft = null;
@@ -603,6 +706,72 @@ function buildSummary(job) {
   }
   return parts.join(' · ');
 }
+/** What a finished file is for, so the list reads as choices rather than a pile of names. */
+function describeOutput(file, job) {
+  const runnable = job.output.runnable?.split('/').pop();
+  if (file.name === runnable) return { group: 'Program', note: 'Runs without installing. With Steam on, keep the Steam library in the same folder.' };
+  if (/\.(dll|so|dylib)$/i.test(file.name)) return { group: 'Steam library', note: 'The program loads this at start-up. Keep it in the same folder as the program.' };
+  if (/\.(exe|msi|dmg|pkg|deb|rpm|appimage|apk|aab|ipa)$/i.test(file.name)) {
+    return { group: 'Installer', note: /\.msi$/i.test(file.name) ? 'Windows installer (MSI).' : 'Installs the game for players.' };
+  }
+  return { group: 'Other', note: '' };
+}
+
+/** Reveals the output folder on this computer. If that fails, the path stays on screen so it can be opened by hand. */
+async function revealOutput(job) {
+  try {
+    const result = await api('reveal', { id: job.id });
+    say(`Opened ${result.path}`);
+  } catch (error) {
+    say(`Could not open the folder (${error.message}). It is at ${job.output.absolute ?? job.output.directory}.`);
+  }
+}
+
+function outputPanel(job) {
+  const panel = el('div', 'output-panel');
+  const files = job.output.artifacts.filter(item => item.name !== 'build-report.json');
+  const total = files.reduce((sum, item) => sum + (item.directory ? 0 : item.bytes || 0), 0);
+  panel.append(el('h3', '', 'Files'));
+  panel.append(el('p', 'hint small', `${files.length} ${files.length === 1 ? 'item' : 'items'} · ${(total / 1048576).toFixed(1)} MB in total`));
+
+  const folder = el('div', 'folder-row');
+  const location = job.output.absolute ?? job.output.directory;
+  folder.append(el('code', 'folder-path', location));
+  folder.append(button('Open folder', () => revealOutput(job), 'btn sm'));
+  folder.append(button('Copy path', async () => {
+    try { await navigator.clipboard.writeText(location); say('Path copied.'); }
+    catch { say(`Copy this path: ${location}`); }
+  }, 'link'));
+  panel.append(folder);
+
+  const groups = new Map();
+  for (const file of files) {
+    const info = file.directory ? { group: 'Web build', note: 'Open the Preview link above, or serve this folder from a web server.' } : describeOutput(file, job);
+    if (!groups.has(info.group)) groups.set(info.group, { note: info.note, items: [] });
+    groups.get(info.group).items.push(file);
+  }
+  const order = ['Program', 'Installer', 'Steam library', 'Web build', 'Other'];
+  for (const title of [...groups.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b))) {
+    const group = groups.get(title);
+    const section = el('div', 'output-group');
+    section.append(el('h4', '', title));
+    if (group.note) section.append(el('p', 'hint small', group.note));
+    for (const file of group.items) {
+      const row = el('div', 'output-file');
+      if (file.directory) row.append(el('span', '', file.name));
+      else {
+        const download = el('a', 'link', file.name);
+        download.href = `/artifact/${job.id}/${encodeURIComponent(file.name)}`;
+        row.append(download);
+      }
+      row.append(el('span', 'muted small', file.directory ? 'folder' : `${(file.bytes / 1048576).toFixed(1)} MB`));
+      section.append(row);
+    }
+    panel.append(section);
+  }
+  return panel;
+}
+
 function renderResult(platform, job) {
   const box = el('div', `result${job.status === 'succeeded' ? ' ok' : job.status === 'failed' ? ' bad' : ''}`);
   const key = `${job.action}:${platform.id}`;
@@ -622,13 +791,7 @@ function renderResult(platform, job) {
   const links = el('div', 'links');
   if (job.status === 'running' && job.devUrl) links.append(link('Open live game', job.devUrl));
   if (job.status === 'succeeded' && job.action === 'run' && job.profile.platform === 'web') links.append(link('Open preview', `/preview/${job.id}/`));
-  if (job.status === 'succeeded' && job.output) {
-    links.append(button('Open output folder', () => api('reveal', { id: job.id }).catch(error => say(error.message)), 'link'));
-    for (const file of job.output.artifacts.filter(item => !item.directory && item.name !== 'build-report.json')) {
-      const download = el('a', 'link', `Download ${file.name} (${(file.bytes / 1048576).toFixed(1)} MB)`);
-      download.href = `/artifact/${job.id}/${encodeURIComponent(file.name)}`; links.append(download);
-    }
-  }
+  if (job.status === 'succeeded' && job.output) box.append(outputPanel(job));
   if (links.childElementCount) box.append(links);
   return box;
 }
@@ -691,6 +854,7 @@ function renderPlatform(id) {
     card.append(steps); view.append(card);
   }
 
+  if (isSteam) view.append(steamSettingsCard());
   const actions = el('div', 'actions');
   if (isSteam) actions.append(el('p', 'hint', 'Uploads are not automated yet. Once the SDK is in place, upload your Windows, macOS or Linux build with Steam’s own upload tools.'));
   else if (isTools || (checks[id] && !hostBlocked(platform))) {

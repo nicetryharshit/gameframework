@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { buildPlan, projectInfo, saveProfile, checkPlatform, validateProfile, validateIosSettings, nativeProjectExists, updateIosProject, moveIosProjectAside, runStep, cancelChild, collectArtifacts, clearPreviousOutput } from './builds.mjs';
+import { addSteamToGame, chooseFolder, installSteamSdk, readSteamSettings, saveSteamSettings } from './steam.mjs';
 
 const assets = path.dirname(fileURLToPath(import.meta.url));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.wasm': 'application/wasm' };
@@ -177,6 +178,7 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       }
       if (['build', 'run'].includes(job.action) && !(job.action === 'run' && job.profile.platform !== 'web' && job.profile.mode === 'development')) {
         job.output = await collectArtifacts(root, job.profile, job);
+        job.output.absolute = path.join(root, job.output.directory);
         if (job.cancelled) throw new Error('Cancelled');
         log(job, `\nArtifacts: ${job.output.directory}\n`);
         if (job.action === 'run' && job.profile.platform !== 'web') {
@@ -198,11 +200,27 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
       const url = new URL(req.url, address.origin);
       if (url.pathname.startsWith('/api/')) {
         if (req.headers['x-export-token'] !== token || (req.headers.origin && req.headers.origin !== address.origin)) return json({ error: 'Unauthorized local request' }, 403);
-        if (req.method === 'GET' && url.pathname === '/api/state') return json({ project: await projectInfo(root), example: await gameExample(), active: active?.id, jobs: jobs.map(({ child, ...job }) => job) });
+        if (req.method === 'GET' && url.pathname === '/api/state') return json({ project: await projectInfo(root), example: await gameExample(), active: active?.id, steam: await readSteamSettings(root), jobs: jobs.map(({ child, ...job }) => job) });
         if (req.method === 'GET' && url.pathname === '/api/games') return json(await listGames());
         if (req.method !== 'POST' || req.headers.origin !== address.origin || !req.headers['content-type']?.startsWith('application/json')) return json({ error: 'Invalid request' }, 403);
         let body = ''; for await (const chunk of req) { body += chunk; if (body.length > 16384) throw new Error('Request too large'); }
         const data = JSON.parse(body || '{}');
+        if (url.pathname === '/api/steam-settings') {
+          if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
+          saving = true;
+          try { return json({ ok: true, steam: await saveSteamSettings(root, data.settings) }); } finally { saving = false; }
+        }
+        if (url.pathname === '/api/pick-folder') return json({ path: (await chooseFolder()) ?? null });
+        if (url.pathname === '/api/add-steam') {
+          if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
+          saving = true;
+          try { return json({ ok: true, ...await addSteamToGame(root, path.resolve(assets, '..', '..')) }); } finally { saving = false; }
+        }
+        if (url.pathname === '/api/steam-sdk') {
+          if (active || saving) return json({ error: 'A build or profile save is already active' }, 409);
+          saving = true;
+          try { return json({ ok: true, ...await installSteamSdk(root, data.path) }); } finally { saving = false; }
+        }
         if (url.pathname === '/api/check') return json(await checkPlatform(root, data.platform));
         if (url.pathname === '/api/create') return json(await createGame(data));
         if (url.pathname === '/api/open-game') return json(await openGame(data));
@@ -255,11 +273,13 @@ export async function startExportUI(root = process.cwd(), port = 4179) {
         if (url.pathname === '/api/reveal') {
           const job = jobs.find(job => job.id === data.id);
           if (!job?.output) throw new Error('No output directory for this job');
-          const directory = await realpath(path.join(root, job.output.directory));
-          if (!inside(root, directory)) throw new Error('Invalid output directory');
+          // The output folder is written by this server, so it is opened as written. Resolving symlinks here
+          // (for example through OneDrive or a junction) can make a valid folder look like it is outside the project.
+          const directory = path.join(root, job.output.directory);
+          if (!(await exists(directory))) throw new Error('The output folder is missing. Build again.');
           const command = process.platform === 'win32' ? 'explorer.exe' : process.platform === 'darwin' ? 'open' : 'xdg-open';
           const child = spawn(command, [directory], { shell: false, windowsHide: true, stdio: 'ignore' });
-          child.on('error', () => {}); child.unref(); return json({ ok: true });
+          child.on('error', () => {}); child.unref(); return json({ ok: true, path: directory });
         }
         return json({ error: 'Unknown action' }, 404);
       }

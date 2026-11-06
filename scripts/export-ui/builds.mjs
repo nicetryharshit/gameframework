@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { access, readFile, mkdir, writeFile, readdir, cp, stat, rename, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { readSteamSettings, readSteamSettingsSync, RUNTIME_LIBRARY, SDK_FOLDER, steamAppIdStep, steamChecks, steamFeatureDeclared, steamRuntimeStep, steamUsesSteam } from './steam.mjs';
 
 export const platforms = ['web', 'windows', 'macos', 'linux', 'android', 'ios'];
 const hosts = { windows: 'win32', macos: 'darwin', linux: 'linux', ios: 'darwin' };
@@ -119,10 +120,37 @@ export function buildPlan(root, profile, action, host = process.platform) {
   }
   if (p.platform === 'ios') throw new Error('Initialize and open the Xcode project to build on a simulator. Automated iOS archives require signing configuration, which is not set up here.');
   if (p.platform === 'android' && p.mode === 'release') throw new Error('Android release signing is not configured. Use a development APK or open Android Studio for release setup.');
+  const settings = readSteamSettingsSync(root);
+  const steam = steamUsesSteam(p.platform, settings) ? steamBuild(root, settings) : undefined;
   const args = [cli, ...(mobile ? [p.platform] : []), action === 'run' && p.mode === 'development' ? 'dev' : 'build'];
   if (args.at(-1) === 'build') args.push(...(p.mode === 'development' ? ['--debug'] : []), ...(mobile ? ['--apk'] : ['--no-sign']));
-  args.push('--config', config);
-  return [{ command: process.execPath, args, title: action === 'run' && p.mode === 'development' ? 'Run development build (stop to end session)' : 'Build native application' }];
+  if (steam) args.push('--features', 'steam');
+  // A Windows installer must carry the Steam runtime library, or players hit the missing-DLL error on start-up.
+  const installerNeedsSteam = steam && p.platform === 'windows' && args.includes('build');
+  const installerConfig = installerNeedsSteam
+    ? { ...initConfig(p), bundle: { resources: { [`../vendor/steamworks/sdk/redistributable_bin/${RUNTIME_LIBRARY.windows.replaceAll('\\', '/')}`]: './' } } }
+    : undefined;
+  args.push('--config', installerConfig ? JSON.stringify(installerConfig) : config);
+  const steps = [];
+  // Steam recognises a local development run only when steam_appid.txt sits next to the app. Release builds never get it.
+  if (steam && p.mode === 'development') {
+    steps.push(steamAppIdStep(root, steam.appId));
+    const runtime = steamRuntimeStep(root, p.platform);
+    if (runtime) steps.push(runtime);
+  }
+  // Debug builds tell the game's page it is a debug build, so debug-only tools such as the Steam test panel are included.
+  // Tauri runs the web build itself (beforeBuildCommand), and it inherits this variable.
+  const env = p.mode === 'development' ? { VITE_GAME_DEBUG_BUILD: '1' } : undefined;
+  steps.push({ command: process.execPath, args, title: action === 'run' && p.mode === 'development' ? 'Run development build (stop to end session)' : 'Build native application', ...(env ? { env } : {}) });
+  return steps;
+}
+/** The Steam settings a desktop build needs, or a clear reason it cannot include Steam yet. */
+function steamBuild(root, settings) {
+  if (!settings.appId) throw new Error('Enter your Steam App ID on the Steam page, or turn off Build with Steam.');
+  let cargo = '';
+  try { cargo = readFileSync(path.join(root, 'src-tauri/Cargo.toml'), 'utf8'); } catch { /* checked below */ }
+  if (!steamFeatureDeclared(cargo)) throw new Error('This game has no Steam feature in src-tauri/Cargo.toml. Update tools from the framework, then try again.');
+  return { appId: settings.appId };
 }
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
 async function version(command, args) {
@@ -163,8 +191,8 @@ async function rustupChecks(platform, add) {
 }
 
 async function steamCheck(root) {
-  const sdk = await exists(path.join(root, 'vendor/steamworks/sdk/public/steam'));
-  return { checks: [{ name: 'Steamworks SDK', ok: sdk, detail: sdk ? 'Found in vendor/steamworks/sdk' : 'Download the SDK from the Steamworks site and place it in vendor/steamworks/sdk. Steps: docs/integrations/steam.md', blocking: true }], ready: sdk, note: 'Uploads to Steam are not automated yet.' };
+  const checks = await steamChecks(root, await readSteamSettings(root));
+  return { checks, ready: checks.every(check => check.ok || !check.blocking), note: 'Uploads to Steam are not automated yet.' };
 }
 export async function checkPlatform(root, platform, host = process.platform, action = 'build') {
   if (platform === 'steam') return steamCheck(root);
@@ -207,6 +235,8 @@ export async function checkPlatform(root, platform, host = process.platform, act
     if (platform === 'ios') { const pods = await version('pod', ['--version']); add('CocoaPods', !!pods, pods || 'Install CocoaPods: run "sudo gem install cocoapods" (or "brew install cocoapods"), then Re-check'); }
   }
   if (['android', 'ios'].includes(platform)) add('Native project', await exists(path.join(root, `src-tauri/gen/${platform === 'ios' ? 'apple' : 'android'}`)), platform === 'ios' ? 'Created once in src-tauri/gen/apple. Edits you make in Xcode live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.' : 'Created once in src-tauri/gen/android. Edits you make in Android Studio live there, so commit that folder to Git. Deleting it means Set up creates it again from scratch.', false);
+  const steamSettings = await readSteamSettings(root);
+  if (steamUsesSteam(platform, steamSettings)) checks.push(...await steamChecks(root, steamSettings));
   return { checks, ready: checks.every(check => check.ok || !check.blocking), note: 'Checks detect common prerequisites. Platform SDK components and Rust target availability are verified by the native build tools.' };
 }
 /**
@@ -282,7 +312,7 @@ export function cancelChild(child) {
 export async function runStep(step, root, job, log) {
   log(`\n› ${step.title}\n`);
   await new Promise((resolve, reject) => {
-    const child = spawn(step.command, step.args, { cwd: root, shell: step.shell === true, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, NO_COLOR: '1' } });
+    const child = spawn(step.command, step.args, { cwd: root, shell: step.shell === true, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, NO_COLOR: '1', ...(step.env ?? {}) } });
     job.child = child;
     child.stdout.on('data', data => log(data.toString())); child.stderr.on('data', data => log(data.toString()));
     child.on('error', reject); child.on('close', code => { job.child = undefined; code === 0 && !job.cancelled ? resolve() : reject(new Error(job.cancelled ? 'Cancelled' : `${step.title} failed (exit ${code})`)); });
@@ -327,6 +357,11 @@ export async function collectArtifacts(root, profile, job) {
     if (name && profile.platform !== 'android') {
       const file = path.join(nativeRoot, name + (profile.platform === 'windows' ? '.exe' : ''));
       if (await exists(file)) { const destination = path.join(directory, path.basename(file)); await cp(file, destination); runnable = path.relative(root, destination); }
+    }
+    // A Steam build loads its runtime library at start-up, so it must sit next to the program in the Builds folder.
+    if (steamUsesSteam(profile.platform, readSteamSettingsSync(root)) && RUNTIME_LIBRARY[profile.platform]) {
+      const library = path.join(root, SDK_FOLDER, 'redistributable_bin', RUNTIME_LIBRARY[profile.platform]);
+      if (await exists(library)) await cp(library, path.join(directory, path.basename(library)));
     }
   }
   const artifacts = [];
