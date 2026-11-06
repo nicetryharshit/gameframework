@@ -102,3 +102,7 @@ Everything above can also be done from a terminal, which is useful for scripts o
 | [Roadmap](docs/ROADMAP.md) | What's done, what's next, and what hasn't been tested yet |
 
 To check changes to this framework, run the tests from Maintenance, or `npm test`.
+
+## License
+
+Copyright (c) nicetryharshit. This project is licensed under the [Mozilla Public License 2.0](LICENSE) (MPL-2.0). You can use it for any game, including commercial ones. If you modify MPL-covered files and distribute them, those files must stay open source under MPL-2.0. Security reports: see [SECURITY.md](SECURITY.md).
