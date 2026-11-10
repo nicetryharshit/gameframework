@@ -16,13 +16,15 @@
     "./pixi": "./src/renderers/pixi.ts",
     "./three": "./src/renderers/three.ts",
     "./canvas": "./src/renderers/canvas.ts",
-    "./desktop": "./src/platform/desktop.ts"
+    "./desktop": "./src/platform/desktop.ts",
+    "./scene": "./src/scene/index.ts"
   },
   "files": [
     "src/framework",
     "src/renderers",
     "src/physics",
     "src/platform",
+    "src/scene",
     "src-tauri/src",
     "src-tauri/icons",
     "src-tauri/capabilities",
@@ -34,6 +36,7 @@
     "scripts/export-ui",
     "docs/UPGRADING.md",
     "docs/PLATFORM-BUILDS.md",
+    "docs/SCENE.md",
     "docs/EXPORT-DASHBOARD.md",
     "docs/FRAMEWORK.md",
     "src/demo.ts",

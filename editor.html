@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scene editor</title>
+  <style>
+    :root { color-scheme: light; --bg: #f1f5f9; --panel: #ffffff; --line: #e2e8f0; --text: #0f172a; --muted: #64748b; --accent: #2563eb; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--text); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+    .toolbar { display: flex; gap: 6px; align-items: center; padding: 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .toolbar h1 { font-size: 15px; margin: 0 10px 0 4px; }
+    .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+    button, select, input { font: inherit; }
+    button { padding: 4px 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    main { display: grid; grid-template-columns: 220px minmax(0, 1fr) 290px; min-height: 0; }
+    #hierarchy, #inspector { background: var(--panel); overflow: auto; min-height: 0; }
+    #hierarchy { border-right: 1px solid var(--line); padding: 6px 0; }
+    #inspector { border-left: 1px solid var(--line); padding: 10px 12px; }
+    .row { padding: 4px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row:hover { background: #f8fafc; }
+    .row.selected { background: #dbeafe; color: #1e3a8a; }
+    #viewport { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; min-height: 0; }
+    .panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 0 8px; }
+    .field { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 6px; margin: 5px 0; }
+    .field input, .field select, .add-row select { width: 100%; padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; }
+    .component { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
+    .component-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .add-row { display: flex; gap: 6px; margin-top: 12px; }
+    .note { color: var(--muted); font-size: 12px; }
+    pre { background: #f8fafc; padding: 6px; border-radius: 4px; overflow: auto; font-size: 12px; }
+    footer { padding: 6px 10px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); min-height: 30px; font-size: 13px; }
+    footer.error { color: #b91c1c; }
+    @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 30vh minmax(0, 1fr) 40vh; } #hierarchy { border-right: 0; } #inspector { border-left: 0; } }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <h1>Scene editor</h1>
+    <button id="new" type="button">New</button>
+    <button id="open" type="button">Open…</button>
+    <button id="save" type="button">Save</button>
+    <span class="sep"></span>
+    <button id="undo" type="button">Undo</button>
+    <button id="redo" type="button">Redo</button>
+    <span class="sep"></span>
+    <button id="add-empty" type="button">Add empty</button>
+    <button id="add-sprite" type="button">Add sprite</button>
+    <button id="add-collider" type="button">Add collider</button>
+    <button id="delete" type="button">Delete</button>
+    <span class="sep"></span>
+    <button id="reset-view" type="button">Reset view</button>
+    <input id="file" type="file" accept=".json,application/json" hidden>
+  </header>
+  <main>
+    <aside id="hierarchy" aria-label="Hierarchy"></aside>
+    <canvas id="viewport" aria-label="Scene view"></canvas>
+    <section id="inspector" aria-label="Inspector"></section>
+  </main>
+  <footer id="status">Drag an entity to move it. Drag empty space to pan. Scroll to zoom. Drag rows in the hierarchy to reparent them.</footer>
+  <script type="module" src="/src/editor/main.ts"></script>
+</body>
+</html>

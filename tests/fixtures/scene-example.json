@@ -1,0 +1,10 @@
+{
+  "format": "gameframework.scene",
+  "version": 1,
+  "entities": [
+    { "id": "ship", "components": { "transform": { "x": 3, "y": 2, "rotation": 90 }, "sprite": { "texture": "ship.png", "layer": 2 } } },
+    { "id": "gun", "parent": "ship", "components": { "transform": { "x": 1 }, "sprite": { "texture": "gun.png", "layer": 3 } } },
+    { "id": "crate", "components": { "transform": { "x": -2 }, "sprite": { "texture": "crate.png" }, "collider": { "shape": "box", "width": 2, "height": 2 } } },
+    { "id": "smoke", "components": { "particles": { "rate": 12, "colour": "grey" } } }
+  ]
+}
