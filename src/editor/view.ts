@@ -55,11 +55,15 @@ export interface ViewPalette {
   readonly label: string;
   readonly muted: string;
   readonly sprite: string;
+  readonly gizmoX: string;
+  readonly gizmoY: string;
+  readonly gizmoFree: string;
 }
 
 export const DARK_VIEW_PALETTE: ViewPalette = {
   background: '#161616', playBackground: '#0b0b0b', grid: '#242424', axis: '#3d3d3d', link: '#878787',
-  outline: '#5b6270', selected: '#e6b86a', hovered: '#c3d7ff', origin: '#101010', label: '#a8afb9', muted: '#878787', sprite: '#94a3b8'
+  outline: '#5b6270', selected: '#e6b86a', hovered: '#c3d7ff', origin: '#101010', label: '#a8afb9', muted: '#878787', sprite: '#94a3b8',
+  gizmoX: '#ff6b6b', gizmoY: '#7bd88f', gizmoFree: '#e6e6e6'
 };
 
 let palette: ViewPalette = DARK_VIEW_PALETTE;

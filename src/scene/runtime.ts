@@ -1,5 +1,6 @@
 import { FixedStep } from '../framework/fixed-step';
-import { Box, Circle, Vec2, createPlanckWorld, type Body } from '../physics/planck';
+import { Box, Circle, Polygon, Vec2, createPlanckWorld, type Body } from '../physics/planck';
+import { convexHull } from './hull';
 import { ancestorChain, composeTransforms, getEntity, readTransform, type Scene, type SceneEntity, type Transform2D } from './scene';
 import { audioSchema, colliderSchema, defaultsFor, rigidbodySchema } from './schema';
 
@@ -98,10 +99,7 @@ export function createSceneRuntime(scene: Scene, options: SceneRuntimeOptions = 
     });
     const sx = Math.max(Math.abs(world.scaleX), 0.001);
     const sy = Math.max(Math.abs(world.scaleY), 0.001);
-    const shape =
-      collider.shape === 'circle'
-        ? Circle(Math.max(sx, sy) * Math.max(Number(collider.radius), 0.001))
-        : Box(Math.max((sx * Number(collider.width)) / 2, 0.001), Math.max((sy * Number(collider.height)) / 2, 0.001));
+    const shape = colliderShape(collider, sx, sy, message => options.onWarning?.(`"${entity.id}": ${message}`));
     body.createFixture(shape, {
       density: dynamic ? Number(settings.density) : 0,
       restitution: Number(settings.bounce)
@@ -148,4 +146,19 @@ export function createSceneRuntime(scene: Scene, options: SceneRuntimeOptions = 
       physics.dispose();
     }
   };
+}
+
+/** Builds the physics shape for a collider. Polygons use their convex hull, because the physics engine needs convex shapes. */
+function colliderShape(collider: Record<string, unknown>, sx: number, sy: number, warn: (message: string) => void) {
+  if (collider.shape === 'circle') return Circle(Math.max(sx, sy) * Math.max(Number(collider.radius), 0.001));
+  if (collider.shape === 'polygon') {
+    const points = (collider.points as { x: number; y: number }[]) ?? [];
+    const hull = convexHull(points);
+    if (hull.length >= 3 && hull.length <= 8) {
+      if (hull.length !== points.length) warn('its polygon is not convex, so physics uses the convex hull of its points.');
+      return Polygon(hull.map(point => Vec2(point.x * sx, point.y * sy)));
+    }
+    warn('its polygon needs at least 3 points that are not on one line (and at most 8 corners), so a box is used instead.');
+  }
+  return Box(Math.max((sx * Number(collider.width)) / 2, 0.001), Math.max((sy * Number(collider.height)) / 2, 0.001));
 }

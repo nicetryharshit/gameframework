@@ -1,7 +1,7 @@
 import { Vec2, World, type Body } from 'planck';
 
 export type { Body } from 'planck';
-export { Box, Circle, Vec2 } from 'planck';
+export { Box, Circle, Polygon, Vec2 } from 'planck';
 
 export interface PhysicsWorld {
   /** The Planck world. Create bodies and fixtures on it directly. */

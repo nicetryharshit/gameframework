@@ -127,13 +127,13 @@ test('adding entities checks ids and parents', () => {
 
 test('setField checks the value against the schema and adds the component when missing', () => {
   const scene = loadFixture();
-  assert.throws(() => setField(scene, 'crate', 'collider', 'shape', 'triangle'), /collider\.shape must be one of box, circle/);
+  assert.throws(() => setField(scene, 'crate', 'collider', 'shape', 'triangle'), /collider\.shape must be one of box, circle, polygon/);
   assert.throws(() => setField(scene, 'crate', 'collider', 'width', -1), /collider\.width must be at least 0/);
   assert.throws(() => setField(scene, 'crate', 'sprite', 'glow', 1), /has no field "glow"/);
   assert.throws(() => setField(scene, 'crate', 'mystery', 'x', 1), /Unknown component "mystery"/);
 
   const edited = setField(scene, 'gun', 'collider', 'radius', 0.25);
-  assert.deepEqual(getEntity(edited, 'gun').components.collider, { shape: 'box', width: 1, height: 1, radius: 0.25 });
+  assert.deepEqual(getEntity(edited, 'gun').components.collider, { shape: 'box', width: 1, height: 1, radius: 0.25, points: [{ x: -0.5, y: -0.5 }, { x: 0.5, y: -0.5 }, { x: 0, y: 0.5 }] });
 });
 
 test('setComponent fills in defaults for missing fields', () => {

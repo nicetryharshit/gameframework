@@ -18,7 +18,10 @@ export interface Point {
 }
 
 /** The area an entity covers, in its own units. Entities without a collider are drawn as a unit box. */
-export type Shape = { readonly kind: 'box'; readonly width: number; readonly height: number } | { readonly kind: 'circle'; readonly radius: number };
+export type Shape =
+  | { readonly kind: 'box'; readonly width: number; readonly height: number }
+  | { readonly kind: 'circle'; readonly radius: number }
+  | { readonly kind: 'polygon'; readonly points: readonly Point[] };
 
 export function shapeOf(entity: SceneEntity): Shape {
   if (!entity.components.collider) {
@@ -29,11 +32,13 @@ export function shapeOf(entity: SceneEntity): Shape {
   }
   const data = { ...defaultsFor(colliderSchema), ...entity.components.collider };
   if (data.shape === 'circle') return { kind: 'circle', radius: data.radius as number };
+  if (data.shape === 'polygon') return { kind: 'polygon', points: (data.points as Point[]) ?? [] };
   return { kind: 'box', width: data.width as number, height: data.height as number };
 }
 
 /** Outline in the entity's own units, centred on its origin. Circles become 32-sided polygons. */
 export function outlineOf(shape: Shape): Point[] {
+  if (shape.kind === 'polygon') return [...shape.points];
   if (shape.kind === 'box') {
     const hw = shape.width / 2;
     const hh = shape.height / 2;
@@ -53,7 +58,7 @@ export function outlineOf(shape: Shape): Point[] {
 }
 
 /** Maps a world point into an entity's local space. Returns null when the entity has a zero scale and cannot be hit. */
-function toLocal(world: Transform2D, point: Point): Point | null {
+export function toLocal(world: Transform2D, point: Point): Point | null {
   if (world.scaleX === 0 || world.scaleY === 0) return null;
   const radians = (world.rotation * Math.PI) / 180;
   const cos = Math.cos(radians);
@@ -61,6 +66,17 @@ function toLocal(world: Transform2D, point: Point): Point | null {
   const dx = point.x - world.x;
   const dy = point.y - world.y;
   return { x: (dx * cos + dy * sin) / world.scaleX, y: (-dx * sin + dy * cos) / world.scaleY };
+}
+
+/** Even-odd rule: a point is inside when a ray from it crosses the outline an odd number of times. */
+export function insidePolygon(points: readonly Point[], point: Point): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i];
+    const b = points[j];
+    if (a.y > point.y !== b.y > point.y && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 /** The topmost entity under a world point. Later entities are drawn on top, so they win. */
@@ -73,7 +89,9 @@ export function pickEntity(scene: Scene, point: Point): string | null {
     const inside =
       shape.kind === 'box'
         ? Math.abs(local.x) <= shape.width / 2 && Math.abs(local.y) <= shape.height / 2
-        : local.x * local.x + local.y * local.y <= shape.radius * shape.radius;
+        : shape.kind === 'circle'
+          ? local.x * local.x + local.y * local.y <= shape.radius * shape.radius
+          : insidePolygon(shape.points, local);
     if (inside) return entity.id;
   }
   return null;

@@ -8,9 +8,17 @@ export type FieldSpec =
   | { readonly type: 'string'; readonly default: string }
   | { readonly type: 'boolean'; readonly default: boolean }
   | { readonly type: 'enum'; readonly default: string; readonly options: readonly string[] }
-  | { readonly type: 'asset'; readonly default: string; readonly kind: 'image' | 'audio' };
+  | { readonly type: 'asset'; readonly default: string; readonly kind: 'image' | 'audio' }
+  | { readonly type: 'color'; readonly default: string }
+  | { readonly type: 'points'; readonly default: readonly Point2[] };
 
-export type FieldValue = number | string | boolean;
+/** A point in an entity's local units. */
+export interface Point2 {
+  readonly x: number;
+  readonly y: number;
+}
+
+export type FieldValue = number | string | boolean | readonly Point2[];
 
 /** Describes one component: its name and the fields the editor and loader understand. */
 export interface ComponentSchema {
@@ -39,6 +47,13 @@ export function checkValue(spec: FieldSpec, value: unknown): string | null {
       return typeof value === 'string' && spec.options.includes(value) ? null : `must be one of ${spec.options.join(', ')}`;
     case 'asset':
       return typeof value === 'string' ? null : 'must be an asset path';
+    case 'color':
+      return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? null : 'must be a colour such as #ff8800';
+    case 'points':
+      if (!Array.isArray(value)) return 'must be a list of points';
+      return value.every(point => typeof point?.x === 'number' && typeof point?.y === 'number' && Number.isFinite(point.x) && Number.isFinite(point.y))
+        ? null
+        : 'must be a list of points with x and y numbers';
   }
 }
 
@@ -98,7 +113,7 @@ export const spriteSchema: ComponentSchema = {
     width: { type: 'number', default: 1, min: 0 },
     height: { type: 'number', default: 1, min: 0 },
     layer: { type: 'number', default: 0 },
-    tint: { type: 'string', default: '#ffffff' }
+    tint: { type: 'color', default: '#ffffff' }
   }
 };
 
@@ -106,10 +121,11 @@ export const spriteSchema: ComponentSchema = {
 export const colliderSchema: ComponentSchema = {
   name: 'collider',
   fields: {
-    shape: { type: 'enum', default: 'box', options: ['box', 'circle'] },
+    shape: { type: 'enum', default: 'box', options: ['box', 'circle', 'polygon'] },
     width: { type: 'number', default: 1, min: 0 },
     height: { type: 'number', default: 1, min: 0 },
-    radius: { type: 'number', default: 0.5, min: 0 }
+    radius: { type: 'number', default: 0.5, min: 0 },
+    points: { type: 'points', default: [{ x: -0.5, y: -0.5 }, { x: 0.5, y: -0.5 }, { x: 0, y: 0.5 }] }
   }
 };
 

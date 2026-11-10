@@ -61,8 +61,8 @@ export function defaultLayout(): IJsonModel {
           weight: 76,
           children: [
             tabset('left', 20, ['hierarchy', 'assets']),
-            tabset('center', 56, ['viewport']),
-            tabset('right', 24, ['inspector'])
+            tabset('center', 50, ['viewport']),
+            tabset('right', 30, ['inspector'])
           ]
         },
         tabset('bottom', 24, ['console'])
