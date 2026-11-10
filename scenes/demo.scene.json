@@ -1,0 +1,87 @@
+{
+  "format": "gameframework.scene",
+  "version": 1,
+  "entities": [
+    {
+      "id": "ground",
+      "components": {
+        "transform": {
+          "y": -4
+        },
+        "sprite": {
+          "texture": "images/ground.svg",
+          "width": 16
+        },
+        "collider": {
+          "width": 16
+        },
+        "rigidbody": {
+          "type": "static"
+        }
+      }
+    },
+    {
+      "id": "crate",
+      "components": {
+        "transform": {
+          "x": -1.502,
+          "y": 2
+        },
+        "sprite": {
+          "texture": "images/ground.svg"
+        },
+        "collider": {},
+        "rigidbody": {}
+      }
+    },
+    {
+      "id": "ball",
+      "components": {
+        "transform": {
+          "x": 0.6,
+          "y": 4
+        },
+        "sprite": {
+          "texture": "images/ball.svg",
+          "width": 0.9,
+          "height": 0.9
+        },
+        "collider": {
+          "shape": "circle",
+          "radius": 0.45
+        },
+        "rigidbody": {
+          "bounce": 0.6
+        }
+      }
+    },
+    {
+      "id": "ship",
+      "components": {
+        "transform": {
+          "x": 4,
+          "y": 1,
+          "rotation": 20
+        },
+        "sprite": {
+          "texture": "images/ship.svg",
+          "width": 1.6,
+          "height": 1.6
+        }
+      }
+    },
+    {
+      "id": "speaker",
+      "components": {
+        "transform": {
+          "x": 4,
+          "y": 3
+        },
+        "audio": {
+          "clip": "audio/beep.wav",
+          "volume": 0.6
+        }
+      }
+    }
+  ]
+}

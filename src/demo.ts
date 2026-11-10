@@ -1,5 +1,18 @@
 import { AppLifecycle, DebugOverlay, EventBus, GameLoop, Input, StateManager, UIController, VersionedSaveStore } from './framework';
-import { FlappyGame } from './flappy';
+import { FlappyGame, tuningFromScene } from './flappy';
+
+// The bird's values come from scenes/flappy.scene.json when the project has it, as the framework repo does.
+// Games made from the template have no scenes folder and use the built-in defaults.
+// Vite replaces this call at build time. Plain Node (tests) has no glob, so it sees no scene.
+const sceneFiles = (typeof import.meta.glob === 'function' ? import.meta.glob('../scenes/flappy.scene.json', { query: '?raw', import: 'default', eager: true }) : {}) as Record<string, string>;
+const tuning = (() => {
+  try {
+    return tuningFromScene(Object.values(sceneFiles)[0]);
+  } catch (error) {
+    console.warn('The Flappy scene could not be read; using the default bird.', error);
+    return tuningFromScene(undefined);
+  }
+})();
 import { createGameOptions } from './demo-settings';
 
 export interface FlightView { render(game: FlappyGame): void; setRenderScale?(scale: number): void; dispose(): void }
@@ -12,12 +25,12 @@ export async function startDemo(renderer: string, makeView: (container: HTMLElem
     <footer><p>Tap the sky · Space · Controller A</p><small class="save-status">Best scores are saved on this device.</small></footer></main>`;
   const ui = new UIController(root.querySelector('.screens')!);
   const input = new Input({
-    flap: { keys: ['Space', 'Enter'], buttons: [0] }, pause: { keys: ['Escape'], buttons: [9] },
+    flap: { keys: [tuning.jumpKey], buttons: [0] }, confirm: { keys: [tuning.jumpKey, 'Enter'], buttons: [0] }, pause: { keys: ['Escape'], buttons: [9] },
     menuUp: { keys: ['ArrowUp'], buttons: [12], axes: [{ index: 1, direction: -1 }] },
     menuDown: { keys: ['ArrowDown'], buttons: [13], axes: [{ index: 1, direction: 1 }] },
     menuLeft: { buttons: [14], axes: [{ index: 0, direction: -1 }] }, menuRight: { buttons: [15], axes: [{ index: 0, direction: 1 }] }
   });
-  const game = new FlappyGame();
+  const game = new FlappyGame(Math.random, tuning);
   const options = await createGameOptions();
   ui.register('settings', { element: options.element, show: options.show });
   let settingsReturn = 'menu';
@@ -75,7 +88,7 @@ export async function startDemo(renderer: string, makeView: (container: HTMLElem
     if (input.pressed('menuUp')) index = (index + buttons.length - 1) % buttons.length;
     if (input.pressed('menuDown')) index = (index + 1) % buttons.length;
     if (input.pressed('menuUp') || input.pressed('menuDown')) buttons[index].focus({ preventScroll: true });
-    if (input.pressed('flap')) buttons[index].click();
+    if (input.pressed('confirm')) buttons[index].click();
   };
   states.register('menu', { enter: () => { game.reset(); hud.hidden = true; ui.show('menu'); }, update: updateMenu });
   states.register('playing', {

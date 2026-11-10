@@ -138,7 +138,7 @@ test('setField checks the value against the schema and adds the component when m
 
 test('setComponent fills in defaults for missing fields', () => {
   const scene = setComponent(loadFixture(), 'gun', 'sprite', { texture: 'x.png' });
-  assert.deepEqual(getEntity(scene, 'gun').components.sprite, { texture: 'x.png', layer: 0, tint: '#ffffff' });
+  assert.deepEqual(getEntity(scene, 'gun').components.sprite, { texture: 'x.png', width: 1, height: 1, layer: 0, tint: '#ffffff' });
 });
 
 test('the registry refuses bad names, duplicates and defaults that do not match their type', () => {

@@ -1,0 +1,13 @@
+{
+  "format": "gameframework.scene",
+  "version": 1,
+  "entities": [
+    {
+      "id": "bird",
+      "components": {
+        "transform": { "x": 120, "y": 300 },
+        "flappy-bird": { "size": 32, "jumpSpeed": 340, "gravity": 1050, "jumpKey": "Space" }
+      }
+    }
+  ]
+}

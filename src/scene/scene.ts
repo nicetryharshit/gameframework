@@ -214,3 +214,27 @@ export function removeComponent(scene: Scene, id: string, name: string): Scene {
   delete components[name];
   return updateEntity(scene, id, current => ({ ...current, components }));
 }
+
+/** Renames an entity and updates every child that points at it. */
+export function renameEntity(scene: Scene, id: string, newId: string): Scene {
+  if (newId === '') throw new Error('An entity needs an id.');
+  getEntity(scene, id);
+  if (newId === id) return scene;
+  if (scene.entities.some(entity => entity.id === newId)) throw new Error(`An entity with id "${newId}" already exists.`);
+  return {
+    entities: scene.entities.map(entity => ({
+      ...entity,
+      id: entity.id === id ? newId : entity.id,
+      parent: entity.parent === id ? newId : entity.parent
+    }))
+  };
+}
+
+/** Copies one entity beside the original, offset to the right so both can be seen. Its children are not copied. */
+export function duplicateEntity(scene: Scene, id: string, newId: string, registry: ComponentRegistry = createDefaultRegistry()): Scene {
+  const source = getEntity(scene, id);
+  const components: Record<string, ComponentData> = structuredClone(source.components);
+  const x = (components.transform?.x as number | undefined) ?? 0;
+  components.transform = { ...components.transform, x: x + 0.5 };
+  return addEntity(scene, { id: newId, parent: source.parent, components }, registry);
+}

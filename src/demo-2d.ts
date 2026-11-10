@@ -24,7 +24,7 @@ void startDemo('PIXI / 2D', async container => {
     setRenderScale(scale) { app.renderer.resolution = Math.min(2, (window.devicePixelRatio || 1) * scale); app.resize(); },
     render(game) {
       world.scale.set(app.screen.width / flight.width, app.screen.height / flight.height);
-      bird.position.set(flight.birdX, game.y); bird.rotation = Math.max(-0.4, Math.min(0.8, game.velocity / 650));
+      bird.position.set(flight.birdX, game.y); bird.scale.set(game.tuning.radius / flight.radius); bird.rotation = Math.max(-0.4, Math.min(0.8, game.velocity / 650));
       game.pipes.forEach((pipe, i) => { pipes[i].top.position.set(pipe.x, pipe.center - flight.gap / 2); pipes[i].bottom.position.set(pipe.x, pipe.center + flight.gap / 2); });
       app.render();
     },

@@ -21,7 +21,7 @@ void startDemo('THREE / 3D', async container => {
   return {
     setRenderScale(scale) { view.renderer.setPixelRatio(Math.min(2, (window.devicePixelRatio || 1) * scale)); },
     render(game) {
-      bird.position.set(flight.birdX, 720 - game.y, 0);
+      bird.position.set(flight.birdX, 720 - game.y, 0); bird.scale.setScalar(game.tuning.radius / flight.radius);
       game.pipes.forEach((pipe, i) => {
         const topHeight = pipe.center - flight.gap / 2, bottomY = pipe.center + flight.gap / 2;
         pipes[i].top.scale.set(flight.pipeWidth, topHeight, 30); pipes[i].top.position.set(pipe.x + flight.pipeWidth / 2, 720 - topHeight / 2, 0);

@@ -32,3 +32,53 @@ test('different ordinary frame sizes produce the same flight trajectory', () => 
   for (let i = 0; i < 3; i++) b.update(1 / 30);
   assert.ok(Math.abs(a.y - b.y) < 0.00001);
 });
+
+// Scene-driven bird settings (see docs/EDITOR.md and scenes/flappy.scene.json).
+import { readFileSync } from 'node:fs';
+import { defaultTuning, tuningFromScene } from '../src/flappy';
+import { flappyBirdSchema } from '../src/flappy-schema';
+import { createDefaultRegistry } from '../src/scene/index';
+
+const birdScene = (components: Record<string, unknown>) => JSON.stringify({ format: 'gameframework.scene', version: 1, entities: [{ id: 'bird', components: { 'flappy-bird': components } }] });
+
+test('the bird reads its size, jump speed, gravity and key from a scene', () => {
+  const tuning = tuningFromScene(birdScene({ size: 64, jumpSpeed: 500, gravity: 800, jumpKey: 'KeyZ' }));
+  assert.equal(tuning.radius, 32);
+  assert.equal(tuning.jumpSpeed, 500);
+  assert.equal(tuning.gravity, 800);
+  assert.equal(tuning.jumpKey, 'KeyZ');
+  const game = new FlappyGame(() => 0.5, tuning);
+  game.flap();
+  assert.equal(game.velocity, -500);
+});
+
+test('invalid bird values fall back to the defaults', () => {
+  const tuning = tuningFromScene(birdScene({ jumpKey: 'F13', jumpSpeed: 'fast' }));
+  assert.equal(tuning.jumpKey, 'Space');
+  assert.equal(tuning.jumpSpeed, defaultTuning.jumpSpeed);
+});
+
+test('no scene, or a scene without a bird, gives the defaults', () => {
+  assert.deepEqual(tuningFromScene(undefined), defaultTuning);
+  assert.deepEqual(tuningFromScene(JSON.stringify({ format: 'gameframework.scene', version: 1, entities: [] })), defaultTuning);
+});
+
+test('the shipped scene matches the built-in defaults', () => {
+  const text = readFileSync(new URL('../scenes/flappy.scene.json', import.meta.url), 'utf8');
+  assert.deepEqual(tuningFromScene(text), defaultTuning);
+});
+
+test('the editor schema defaults match the game defaults', () => {
+  const fields = flappyBirdSchema.fields;
+  assert.equal(fields.size.default, defaultTuning.radius * 2);
+  assert.equal(fields.jumpSpeed.default, defaultTuning.jumpSpeed);
+  assert.equal(fields.gravity.default, defaultTuning.gravity);
+  assert.equal(fields.jumpKey.default, defaultTuning.jumpKey);
+  assert.ok(createDefaultRegistry().register(flappyBirdSchema).get('flappy-bird'));
+});
+
+test('values outside their range fall back to the default', () => {
+  const tuning = tuningFromScene(birdScene({ size: 4000, gravity: -5 }));
+  assert.equal(tuning.radius, defaultTuning.radius);
+  assert.equal(tuning.gravity, defaultTuning.gravity);
+});

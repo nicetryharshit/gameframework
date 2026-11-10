@@ -1,4 +1,4 @@
-import { worldTransform, type Scene, type SceneEntity } from '../scene/index';
+import { worldTransform, type Scene, type SceneEntity, type Transform2D } from '../scene/index';
 import { outlineOf, shapeOf, type Point } from './picking';
 
 /** Where the view is looking. zoom is screen pixels per world unit. y points up in the world, down on screen. */
@@ -41,6 +41,44 @@ export function zoomAt(camera: Camera, size: ViewSize, screen: Point, factor: nu
   };
 }
 
+/** Colours for the viewport. The editor fills these from the active theme, so the canvas follows light and dark. */
+export interface ViewPalette {
+  readonly background: string;
+  readonly playBackground: string;
+  readonly grid: string;
+  readonly axis: string;
+  readonly link: string;
+  readonly outline: string;
+  readonly selected: string;
+  readonly hovered: string;
+  readonly origin: string;
+  readonly label: string;
+  readonly muted: string;
+  readonly sprite: string;
+}
+
+export const DARK_VIEW_PALETTE: ViewPalette = {
+  background: '#161616', playBackground: '#0b0b0b', grid: '#242424', axis: '#3d3d3d', link: '#878787',
+  outline: '#5b6270', selected: '#e6b86a', hovered: '#c3d7ff', origin: '#101010', label: '#a8afb9', muted: '#878787', sprite: '#94a3b8'
+};
+
+let palette: ViewPalette = DARK_VIEW_PALETTE;
+
+export interface DrawOptions {
+  /** Colours to draw with. Defaults to the dark palette. */
+  readonly palette?: ViewPalette;
+  /** The selected entity, outlined in blue. Only used with gizmos. */
+  readonly selected?: string | null;
+  /** The entity under the pointer, outlined lightly. Only used with gizmos. */
+  readonly hovered?: string | null;
+  /** Transforms to draw with, such as those from a play-mode runtime. Defaults to the scene's own transforms. */
+  readonly worlds?: ReadonlyMap<string, Transform2D>;
+  /** Returns a loaded image for an asset path, or undefined while it loads or when it is missing. */
+  readonly image?: (path: string) => CanvasImageSource | undefined;
+  /** Editor view: grid, outlines, labels and links. Off for the game view. Defaults to on. */
+  readonly gizmos?: boolean;
+}
+
 function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize) {
   const step = camera.zoom >= 40 ? 1 : camera.zoom >= 10 ? 5 : 10;
   const left = camera.x - size.width / 2 / camera.zoom;
@@ -49,7 +87,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize)
   const top = camera.y + size.height / 2 / camera.zoom;
 
   ctx.lineWidth = 1;
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = palette.grid;
   ctx.beginPath();
   for (let x = Math.floor(left / step) * step; x <= right; x += step) {
     const p = toScreen(camera, size, { x, y: 0 });
@@ -64,7 +102,7 @@ function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize)
   ctx.stroke();
 
   const origin = toScreen(camera, size, { x: 0, y: 0 });
-  ctx.strokeStyle = '#94a3b8';
+  ctx.strokeStyle = palette.axis;
   ctx.beginPath();
   ctx.moveTo(0, origin.y);
   ctx.lineTo(size.width, origin.y);
@@ -73,22 +111,26 @@ function drawGrid(ctx: CanvasRenderingContext2D, camera: Camera, size: ViewSize)
   ctx.stroke();
 }
 
+type Emphasis = 'selected' | 'hovered' | 'none';
+
 function drawEntity(
   ctx: CanvasRenderingContext2D,
-  scene: Scene,
   entity: SceneEntity,
+  world: Transform2D,
+  worldOf: (id: string) => Transform2D,
   camera: Camera,
   size: ViewSize,
-  selected: boolean
+  gizmos: boolean,
+  image: DrawOptions['image'],
+  emphasis: Emphasis
 ) {
-  const world = worldTransform(scene, entity.id);
   const origin = toScreen(camera, size, { x: world.x, y: world.y });
 
-  if (entity.parent !== null) {
-    const parent = worldTransform(scene, entity.parent);
+  if (gizmos && entity.parent !== null) {
+    const parent = worldOf(entity.parent);
     const parentOrigin = toScreen(camera, size, { x: parent.x, y: parent.y });
     ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#94a3b8';
+    ctx.strokeStyle = palette.link;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(parentOrigin.x, parentOrigin.y);
@@ -100,43 +142,84 @@ function drawEntity(
   const radians = (world.rotation * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
+
+  const texture = entity.components.sprite?.texture;
+  const loaded = typeof texture === 'string' && texture !== '' && image ? image(texture) : undefined;
+  if (loaded) {
+    const width = Number(entity.components.sprite?.width ?? 1);
+    const height = Number(entity.components.sprite?.height ?? 1);
+    const z = camera.zoom;
+    const m00 = cos * world.scaleX;
+    const m01 = -sin * world.scaleY;
+    const m10 = sin * world.scaleX;
+    const m11 = cos * world.scaleY;
+    ctx.save();
+    // Maps the entity's local units onto the screen, flipping y so world y points up. The extra scale(1, -1)
+    // turns the image right way up, since image rows run downwards.
+    ctx.transform(z * m00, -z * m10, z * m01, -z * m11, origin.x, origin.y);
+    ctx.scale(1, -1);
+    ctx.drawImage(loaded, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  }
+
   const outline = outlineOf(shapeOf(entity)).map(point => {
     const sx = point.x * world.scaleX;
     const sy = point.y * world.scaleY;
     return toScreen(camera, size, { x: world.x + cos * sx - sin * sy, y: world.y + sin * sx + cos * sy });
   });
+  const path = () => {
+    ctx.beginPath();
+    outline.forEach((point, index) => (index === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y)));
+    ctx.closePath();
+  };
 
-  ctx.beginPath();
-  outline.forEach((point, index) => (index === 0 ? ctx.moveTo(point.x, point.y) : ctx.lineTo(point.x, point.y)));
-  ctx.closePath();
-  const tint = entity.components.sprite?.tint;
-  ctx.globalAlpha = 0.55;
-  ctx.fillStyle = typeof tint === 'string' ? tint : '#94a3b8';
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = selected ? 2.5 : 1;
-  ctx.strokeStyle = selected ? '#2563eb' : '#334155';
-  ctx.stroke();
+  if (!loaded) {
+    path();
+    const tint = entity.components.sprite?.tint;
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = typeof tint === 'string' ? tint : palette.sprite;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
 
-  ctx.fillStyle = '#0f172a';
-  ctx.beginPath();
-  ctx.arc(origin.x, origin.y, 3, 0, 2 * Math.PI);
-  ctx.fill();
-  ctx.font = '12px system-ui, sans-serif';
-  ctx.fillText(entity.id, origin.x + 6, origin.y - 6);
+  if (gizmos) {
+    path();
+    ctx.lineWidth = emphasis === 'selected' ? 2.5 : emphasis === 'hovered' ? 1.5 : 1;
+    ctx.strokeStyle = emphasis === 'selected' ? palette.selected : emphasis === 'hovered' ? palette.hovered : palette.outline;
+    ctx.stroke();
+
+    ctx.fillStyle = palette.origin;
+    ctx.beginPath();
+    ctx.arc(origin.x, origin.y, 3, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.font = '12px Inter, system-ui, sans-serif';
+    ctx.fillStyle = palette.label;
+    ctx.fillText(entity.id, origin.x + 6, origin.y - 6);
+    if (entity.components.audio) ctx.fillText('♪', origin.x + 6, origin.y + 12);
+  }
 }
 
-/** Draws the whole scene. The caller sets up any device-pixel scaling on the context before calling. */
-export function drawScene(
-  ctx: CanvasRenderingContext2D,
-  scene: Scene,
-  camera: Camera,
-  size: ViewSize,
-  selected: string | null
-) {
+/** Draws the scene. The caller sets up any device-pixel scaling on the context before calling. */
+export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, camera: Camera, size: ViewSize, options: DrawOptions = {}) {
+  const gizmos = options.gizmos !== false;
+  palette = options.palette ?? DARK_VIEW_PALETTE;
   ctx.clearRect(0, 0, size.width, size.height);
-  ctx.fillStyle = '#f8fafc';
+  ctx.fillStyle = gizmos ? palette.background : palette.playBackground;
   ctx.fillRect(0, 0, size.width, size.height);
-  drawGrid(ctx, camera, size);
-  for (const entity of scene.entities) drawEntity(ctx, scene, entity, camera, size, entity.id === selected);
+  if (gizmos) drawGrid(ctx, camera, size);
+  if (scene.entities.length === 0) {
+    if (gizmos) {
+      ctx.fillStyle = palette.muted;
+      ctx.font = '12px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('The scene is empty. Add an entity from the toolbar.', size.width / 2, size.height / 2);
+      ctx.textAlign = 'start';
+    }
+    return;
+  }
+  const worldOf = (id: string) => options.worlds?.get(id) ?? worldTransform(scene, id);
+  for (const entity of scene.entities) {
+    const emphasis: Emphasis = entity.id === options.selected ? 'selected' : entity.id === options.hovered ? 'hovered' : 'none';
+    drawEntity(ctx, entity, worldOf(entity.id), worldOf, camera, size, gizmos, options.image, emphasis);
+  }
 }

@@ -5,17 +5,27 @@ export interface EditorState {
   readonly selected: string | null;
   readonly past: readonly Scene[];
   readonly future: readonly Scene[];
+  /** The scene as it was last saved or opened. Undoing back to it leaves the editor clean again. */
+  readonly saved: Scene;
 }
 
 const HISTORY_LIMIT = 200;
 
 export function createEditorState(scene: Scene = emptyScene()): EditorState {
-  return { scene, selected: null, past: [], future: [] };
+  return { scene, selected: null, past: [], future: [], saved: scene };
 }
 
 /** Keeps the selection only while that entity still exists. */
 function keepSelection(scene: Scene, selected: string | null): string | null {
   return selected !== null && scene.entities.some(entity => entity.id === selected) ? selected : null;
+}
+
+export function isDirty(state: EditorState): boolean {
+  return state.scene !== state.saved;
+}
+
+export function markSaved(state: EditorState): EditorState {
+  return { ...state, saved: state.scene };
 }
 
 /** Records the current scene as an undo step. Call it once before a gesture, such as a drag. */

@@ -4,63 +4,343 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Scene editor</title>
+  <link rel="icon" href="/icons/editor-mark.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <style>
-    :root { color-scheme: light; --bg: #f1f5f9; --panel: #ffffff; --line: #e2e8f0; --text: #0f172a; --muted: #64748b; --accent: #2563eb; }
+    /* One set of semantic tokens. Themes only change these values; components never hard-code colours. */
+    :root, :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #141821;
+      --surface: #1b202b;
+      --surface-2: #232937;
+      --surface-3: #2b3244;
+      --input: #12161f;
+      --border: #303a4f;
+      --border-strong: #465370;
+      --text: #e8ecf5;
+      --text-2: #b3bccd;
+      --text-3: #7f8aa0;
+      --accent: #6f9cff;
+      --accent-strong: #5a88f5;
+      --on-accent: #0a1430;
+      --accent-soft: rgba(111, 156, 255, 0.16);
+      --select: #2a3a5e;
+      --select-text: #ffffff;
+      --hover: rgba(255, 255, 255, 0.06);
+      --press: rgba(255, 255, 255, 0.1);
+      --warn: #f2b65c;
+      --danger: #f28b8b;
+      --ok: #5fd0b0;
+      --shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+      --c-transform: #8fa3c7; --c-sprite: #6fcf97; --c-collider: #f2a65a; --c-rigidbody: #b48cf2; --c-audio: #f08fc4;
+      --canvas-bg: #11151d; --canvas-play: #0b0e14; --canvas-grid: #1d2330; --canvas-axis: #3a4459;
+      --canvas-link: #6b7790; --canvas-outline: #5b6780; --canvas-selected: #f2b65c; --canvas-hovered: #c7d8ff;
+      --canvas-origin: #0b0e14; --canvas-label: #b3bccd; --canvas-muted: #7f8aa0; --canvas-sprite: #94a3b8;
+    }
+    :root[data-theme="light"] {
+      color-scheme: light;
+      --bg: #e7ecf3;
+      --surface: #ffffff;
+      --surface-2: #f3f6fa;
+      --surface-3: #e8edf5;
+      --input: #ffffff;
+      --border: #d2dae7;
+      --border-strong: #a9b5ca;
+      --text: #18202f;
+      --text-2: #3f4a5e;
+      --text-3: #6d7990;
+      --accent: #2f63e6;
+      --accent-strong: #2653c9;
+      --on-accent: #ffffff;
+      --accent-soft: rgba(47, 99, 230, 0.12);
+      --select: #dbe6ff;
+      --select-text: #0d1b3f;
+      --hover: rgba(20, 30, 50, 0.05);
+      --press: rgba(20, 30, 50, 0.1);
+      --warn: #a86408;
+      --danger: #c43d3d;
+      --ok: #17806a;
+      --shadow: 0 10px 28px rgba(20, 30, 50, 0.18);
+      --c-transform: #53688c; --c-sprite: #2f8f5b; --c-collider: #b86a1c; --c-rigidbody: #7a4fd0; --c-audio: #b3457f;
+      --canvas-bg: #f7f9fc; --canvas-play: #eef2f8; --canvas-grid: #e2e8f1; --canvas-axis: #c3cddb;
+      --canvas-link: #9aa5b8; --canvas-outline: #8c98ad; --canvas-selected: #d98a1c; --canvas-hovered: #2f63e6;
+      --canvas-origin: #ffffff; --canvas-label: #3f4a5e; --canvas-muted: #6d7990; --canvas-sprite: #5d6b82;
+    }
+
+    /* Docking chrome follows the tokens, so light and dark apply to tabs and splitters too. */
+    :root {
+      --flexlayout-color-text: var(--text-2);
+      --flexlayout-color-background: var(--bg);
+      --flexlayout-color-tabset-background: var(--surface);
+      --flexlayout-color-tabset-background-selected: var(--surface);
+      --flexlayout-color-tabset-background-maximized: var(--surface);
+      --flexlayout-color-tabset-header-background: var(--surface-2);
+      --flexlayout-color-tabset-divider: var(--border);
+      --flexlayout-color-tabset-divider-line: var(--border);
+      --flexlayout-color-tab-selected-background: var(--surface);
+      --flexlayout-color-tab-selected: var(--text);
+      --flexlayout-color-tab-unselected-background: transparent;
+      --flexlayout-color-tab-unselected: var(--text-3);
+      --flexlayout-color-splitter: var(--bg);
+      --flexlayout-color-splitter-hover: var(--accent);
+      --flexlayout-color-splitter-drag: var(--accent);
+      --flexlayout-font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --flexlayout-font-size: 12px;
+      --flexlayout-splitter-size: 4px;
+      --flexlayout-tab-button-radius: 0px;
+    }
+
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
-    body { font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--text); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-    .toolbar { display: flex; gap: 6px; align-items: center; padding: 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-    .toolbar h1 { font-size: 15px; margin: 0 10px 0 4px; }
-    .sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
-    button, select, input { font: inherit; }
-    button { padding: 4px 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; }
-    button:hover:not(:disabled) { border-color: var(--accent); }
+    body {
+      font: 12px/1.5 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--text); background: var(--bg);
+      display: grid; grid-template-rows: 38px 40px minmax(0, 1fr) 24px; height: 100vh; overflow: hidden;
+    }
+    button, select, input { font: inherit; color: inherit; }
+    button { border: 0; background: transparent; color: var(--text-2); cursor: pointer; border-radius: 4px; }
+    button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+    button:active:not(:disabled) { background: var(--press); }
     button:disabled { opacity: 0.4; cursor: default; }
-    main { display: grid; grid-template-columns: 220px minmax(0, 1fr) 290px; min-height: 0; }
-    #hierarchy, #inspector { background: var(--panel); overflow: auto; min-height: 0; }
-    #hierarchy { border-right: 1px solid var(--line); padding: 6px 0; }
-    #inspector { border-left: 1px solid var(--line); padding: 10px 12px; }
-    .row { padding: 4px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .row:hover { background: #f8fafc; }
-    .row.selected { background: #dbeafe; color: #1e3a8a; }
-    #viewport { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; min-height: 0; }
-    .panel-title { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 4px 0 8px; }
-    .field { display: grid; grid-template-columns: 90px minmax(0, 1fr); align-items: center; gap: 6px; margin: 5px 0; }
-    .field input, .field select, .add-row select { width: 100%; padding: 3px 5px; border: 1px solid var(--line); border-radius: 4px; }
-    .component { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0; }
-    .component-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-    .add-row { display: flex; gap: 6px; margin-top: 12px; }
-    .note { color: var(--muted); font-size: 12px; }
-    pre { background: #f8fafc; padding: 6px; border-radius: 4px; overflow: auto; font-size: 12px; }
-    footer { padding: 6px 10px; background: var(--panel); border-top: 1px solid var(--line); color: var(--muted); min-height: 30px; font-size: 13px; }
-    footer.error { color: #b91c1c; }
-    @media (max-width: 800px) { main { grid-template-columns: minmax(0, 1fr); grid-template-rows: 30vh minmax(0, 1fr) 40vh; } #hierarchy { border-right: 0; } #inspector { border-left: 0; } }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    button.primary { background: var(--accent); color: var(--on-accent); font-weight: 500; }
+    button.primary:hover:not(:disabled) { background: var(--accent-strong); color: var(--on-accent); }
+    button.ghost { border: 1px solid var(--border); }
+    input, select {
+      background: var(--input); border: 1px solid var(--border); border-radius: 4px;
+      height: 26px; padding: 0 8px; min-width: 0; color: var(--text);
+    }
+    input:hover, select:hover { border-color: var(--border-strong); }
+    input:focus, select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+    input[type="checkbox"] { height: auto; accent-color: var(--accent); }
+    input[type="number"] { width: 100%; font-variant-numeric: tabular-nums; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border: 3px solid transparent; background-clip: padding-box; border-radius: 6px; }
+
+    /* Menubar */
+    .menubar { display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 8px; margin-right: 10px; font-weight: 600; white-space: nowrap; }
+    .brand img { width: 22px; height: 22px; display: block; }
+    .menu-trigger { height: 26px; padding: 0 9px; color: var(--text-2); }
+    .menu-trigger[aria-expanded="true"] { background: var(--select); color: var(--select-text); }
+    .menubar .spacer { flex: 1; }
+    .header-scene { color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 36vw; margin-right: 6px; }
+    .header-scene.dirty::after { content: " ●"; color: var(--warn); }
+    .tool { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; white-space: nowrap; }
+    .tool .ico { display: inline-flex; width: 16px; height: 16px; }
+    .tool.icon-only { width: 26px; padding: 0; justify-content: center; }
+    .tool.icon-only .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .chevron { display: inline-flex; width: 14px; height: 14px; margin-left: -2px; opacity: 0.8; }
+
+    /* Popups */
+    .menu {
+      position: fixed; z-index: 60; min-width: 220px; padding: 4px;
+      background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: var(--shadow);
+    }
+    .menu-item {
+      display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 6px; width: 100%; height: 28px;
+      padding: 0 8px 0 4px; text-align: left; border-radius: 4px; color: var(--text); white-space: nowrap;
+    }
+    .menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--select); color: var(--select-text); outline: none; }
+    .menu-item:disabled { color: var(--text-3); }
+    .menu-item .check { display: inline-flex; color: var(--accent); }
+    .menu-item[aria-checked="false"] .check { visibility: hidden; }
+    .menu-item[aria-checked="false"]:not([aria-checked="true"]) .check { display: none; }
+    .menu-item kbd, .palette-row kbd { font: 11px var(--font-mono, "JetBrains Mono", monospace); color: var(--text-3); }
+    .menu-separator { height: 1px; margin: 4px 6px; background: var(--border); }
+
+    /* Toolbar: only the everyday actions */
+    .toolbar { display: flex; align-items: center; gap: 4px; padding: 0 8px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 6px; }
+    .toolbar .spacer { flex: 1; }
+    .toolbar .status-pill { color: var(--text-3); font-size: 11px; }
+
+    /* Layout */
+    #layout { position: relative; min-height: 0; min-width: 0; background: var(--bg); }
+    .flexlayout__layout { background: var(--bg); }
+    .flexlayout__tabset { border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .flexlayout__tab { overflow: hidden; }
+    .flexlayout__tab_button { border-radius: 0; }
+    .flexlayout__tab_button--selected { box-shadow: inset 0 -2px 0 var(--accent); }
+    .panel-host { height: 100%; min-height: 0; min-width: 0; }
+    #parking { display: none; }
+    .panel-body { height: 100%; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--surface); }
+    .panel-body[hidden] { display: none; }
+    .scroll { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; scrollbar-gutter: stable; }
+    .panel-toolbar {
+      display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px 0 12px; flex: none;
+      border-bottom: 1px solid var(--border); background: var(--surface-2);
+    }
+    .panel-toolbar .title { color: var(--text-2); font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Viewport */
+    .viewport-wrap { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--canvas-bg); }
+    #viewport { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+    .overlay {
+      position: absolute; pointer-events: none; font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--text-2);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px;
+    }
+    #scene-name { top: 8px; left: 8px; }
+    #cursor { bottom: 8px; left: 8px; }
+    #meta { bottom: 8px; right: 8px; }
+    #play-banner { top: 8px; right: 8px; background: var(--ok); border-color: var(--ok); color: var(--on-accent); font-weight: 600; letter-spacing: 0.06em; }
+    #play-banner[hidden] { display: none; }
+    body.playing .viewport-wrap { box-shadow: inset 0 0 0 2px var(--ok); }
+
+    /* Lists and rows */
+    .row { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 8px; cursor: pointer; user-select: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 4px; }
+    .row::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex: none; }
+    .row:hover { background: var(--hover); }
+    .row.selected { background: var(--select); color: var(--select-text); }
+    .row.selected::before { background: var(--accent); }
+    .note { color: var(--text-3); font-size: 11px; margin: 4px 0; }
+    .hint { margin: 6px 2px; }
+    .warn-note { color: var(--warn); font-size: 11px; margin: 4px 0; }
+    .name-input { width: 100%; height: 30px; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+    .field { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: center; min-height: 28px; margin: 3px 0; }
+    .field > .field-label { color: var(--text-2); }
+    .field > select, .field > input { width: 100%; }
+    .field > input[type="checkbox"] { justify-self: start; }
+    .component { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px 10px; margin: 10px 0; border-left: 3px solid var(--c-transform); }
+    .component[data-kind="sprite"] { border-left-color: var(--c-sprite); }
+    .component[data-kind="collider"] { border-left-color: var(--c-collider); }
+    .component[data-kind="rigidbody"] { border-left-color: var(--c-rigidbody); }
+    .component[data-kind="audio"] { border-left-color: var(--c-audio); }
+    .component-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .component-head strong { font-weight: 600; }
+    .actions, .add-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+    pre { background: var(--input); border: 1px solid var(--border); padding: 8px; border-radius: 4px; overflow: auto; font: 11px "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--text-2); }
+    .asset-field { display: grid; grid-template-columns: 28px minmax(0, 1fr) 24px; gap: 6px; align-items: center; border-radius: 6px; padding: 2px; }
+    .asset-field.drop-ready { outline: 1px dashed var(--accent); outline-offset: 2px; background: var(--accent-soft); }
+    .asset-thumb { width: 28px; height: 28px; border: 1px solid var(--border); border-radius: 4px; background: var(--input); display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--text-3); }
+    .asset-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .asset-field select { width: 100%; }
+    .group { font-size: 11px; color: var(--text-3); padding: 10px 4px 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 500; }
+    .assets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; align-content: start; }
+    .asset { display: flex; flex-direction: column; gap: 4px; padding: 5px; cursor: grab; min-width: 0; border: 1px solid transparent; border-radius: 6px; }
+    .asset:hover { background: var(--hover); }
+    .asset.selected { border-color: var(--accent); background: var(--accent-soft); }
+    .thumb { width: 100%; aspect-ratio: 1; object-fit: contain; background: var(--input); border: 1px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--text-3); }
+    .asset-name { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+    .asset-preview { border-top: 1px solid var(--border); padding: 10px 12px; max-height: 42%; overflow: auto; flex: none; background: var(--surface-2); }
+    .preview { max-width: 100%; max-height: 160px; display: block; margin: 6px 0; background: var(--input); border: 1px solid var(--border); border-radius: 4px; }
+    #console { font: 11px/1.6 "JetBrains Mono", ui-monospace, Menlo, monospace; padding: 6px 12px; }
+    .entry { display: flex; gap: 10px; white-space: pre-wrap; }
+    .entry .time { color: var(--text-3); flex: none; }
+    .entry.warn .text { color: var(--warn); }
+    .entry.error .text { color: var(--danger); }
+    .entry a { color: var(--accent); }
+
+    /* Dialogs and command search */
+    dialog { border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); padding: 0; width: min(560px, 92vw); border-radius: 8px; box-shadow: var(--shadow); }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
+    .dialog-body { padding: 14px; }
+    dialog h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
+    .scene-list button { display: block; width: 100%; text-align: left; height: 28px; padding: 0 8px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 12px; }
+    #palette { margin-top: 12vh; }
+    #palette-input { width: 100%; height: 40px; border: 0; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 14px; font-size: 13px; border-radius: 0; }
+    #palette-input:focus { box-shadow: none; }
+    .palette-list { max-height: 50vh; overflow: auto; padding: 4px; }
+    .palette-row { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; width: 100%; height: 30px; align-items: center; padding: 0 10px; text-align: left; border-radius: 4px; }
+    .palette-row.active { background: var(--select); color: var(--select-text); }
+    .palette-row:disabled { opacity: 0.45; }
+    .palette-menu { color: var(--text-3); font-size: 11px; }
+    .palette-empty { color: var(--text-3); padding: 12px; margin: 0; }
+    .palette-gestures { border-top: 1px solid var(--border); padding: 8px 14px; color: var(--text-3); font-size: 11px; }
+
+    /* Status line */
+    .statusbar { display: flex; align-items: center; gap: 10px; padding: 0 10px; background: var(--surface); border-top: 1px solid var(--border); color: var(--text-2); font-size: 11px; min-width: 0; }
+    .statusbar .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+    .statusbar[data-level="warn"] .status-dot { background: var(--warn); }
+    .statusbar[data-level="error"] .status-dot { background: var(--danger); }
+    .statusbar #status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .statusbar #status-right { color: var(--text-3); white-space: nowrap; }
   </style>
 </head>
 <body>
-  <header class="toolbar">
-    <h1>Scene editor</h1>
-    <button id="new" type="button">New</button>
-    <button id="open" type="button">Open…</button>
-    <button id="save" type="button">Save</button>
-    <span class="sep"></span>
-    <button id="undo" type="button">Undo</button>
-    <button id="redo" type="button">Redo</button>
-    <span class="sep"></span>
-    <button id="add-empty" type="button">Add empty</button>
-    <button id="add-sprite" type="button">Add sprite</button>
-    <button id="add-collider" type="button">Add collider</button>
-    <button id="delete" type="button">Delete</button>
-    <span class="sep"></span>
-    <button id="reset-view" type="button">Reset view</button>
-    <input id="file" type="file" accept=".json,application/json" hidden>
+  <header class="menubar" id="menubar">
+    <div class="brand"><img src="/icons/editor-mark.svg" alt="" width="22" height="22"><span>Scene editor</span></div>
+    <!-- menu triggers are added by chrome.ts -->
+    <div class="spacer"></div>
+    <span class="header-scene" id="header-scene">Unsaved scene</span>
+    <button id="save" class="tool primary" title="Save scene (Ctrl+S)"><span class="ico" data-icon="save"></span><span class="label">Save</span></button>
+    <button id="palette-open" class="tool icon-only" title="Command search (Ctrl+K)" aria-label="Command search"><span class="ico" data-icon="search"></span><span class="label">Command search</span></button>
   </header>
-  <main>
-    <aside id="hierarchy" aria-label="Hierarchy"></aside>
-    <canvas id="viewport" aria-label="Scene view"></canvas>
-    <section id="inspector" aria-label="Inspector"></section>
-  </main>
-  <footer id="status">Drag an entity to move it. Drag empty space to pan. Scroll to zoom. Drag rows in the hierarchy to reparent them.</footer>
+
+  <div class="toolbar" role="toolbar" aria-label="Scene tools">
+    <button id="undo" class="tool icon-only" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><span class="ico" data-icon="undo"></span><span class="label">Undo</span></button>
+    <button id="redo" class="tool icon-only" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><span class="ico" data-icon="redo"></span><span class="label">Redo</span></button>
+    <span class="sep"></span>
+    <button id="add-button" class="tool" title="Create a GameObject (Ctrl+Shift+N)" aria-haspopup="menu" aria-expanded="false"><span class="ico" data-icon="plus"></span><span class="label">Add</span><span class="chevron" data-icon="chevron"></span></button>
+    <span class="sep"></span>
+    <button id="play" class="tool" title="Play or stop (Ctrl+P)"><span class="ico" data-icon="play"></span><span class="label">Play</span></button>
+    <button id="pause" class="tool" title="Pause play" disabled><span class="ico" data-icon="pause"></span><span class="label">Pause</span></button>
+    <span class="spacer"></span>
+    <span class="status-pill" id="toolbar-status"></span>
+  </div>
+
+  <!-- The docking layout (flexlayout-react) mounts here. -->
+  <div id="layout"></div>
+
+  <!-- Panel contents live here, outside the layout, so moving or floating a tab never loses state. -->
+  <div id="parking">
+    <div id="panel-viewport" class="panel-body">
+      <div class="viewport-wrap">
+        <canvas id="viewport" aria-label="Scene view"></canvas>
+        <span id="scene-name" class="overlay">Unsaved scene</span>
+        <span id="cursor" class="overlay"></span>
+        <span id="meta" class="overlay"></span>
+        <div id="play-banner" class="overlay" hidden>PLAYING</div>
+      </div>
+    </div>
+    <div id="panel-hierarchy" class="panel-body">
+      <div class="panel-toolbar"><span class="title">Hierarchy</span></div>
+      <div id="hierarchy" class="scroll" data-context="hierarchy"></div>
+    </div>
+    <div id="panel-inspector" class="panel-body">
+      <div class="panel-toolbar"><span class="title">Inspector</span></div>
+      <div id="inspector" class="scroll"></div>
+    </div>
+    <div id="panel-assets" class="panel-body">
+      <div class="panel-toolbar">
+        <span class="title">Assets</span>
+        <button id="import-assets" class="tool" title="Import images or sounds"><span class="ico" data-icon="import"></span><span class="label">Import</span></button>
+        <input id="import" type="file" accept="image/*,audio/*" multiple hidden>
+      </div>
+      <div id="assets" class="scroll assets-grid"></div>
+      <div id="asset-preview" class="asset-preview"></div>
+    </div>
+    <div id="panel-console" class="panel-body">
+      <div class="panel-toolbar">
+        <span class="title">Console</span>
+        <button id="clear-console" class="tool"><span class="label">Clear</span></button>
+      </div>
+      <div id="console" class="scroll" role="log" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <footer class="statusbar" id="status" data-level="info">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="status-text">Ready.</span>
+    <span id="status-right">Ctrl+K for commands</span>
+  </footer>
+
+  <dialog id="open-dialog">
+    <div class="dialog-body">
+      <h2>Open scene</h2>
+      <div id="open-list" class="scene-list"></div>
+      <div class="dialog-actions"><button id="open-cancel" class="ghost tool"><span class="label">Cancel</span></button></div>
+    </div>
+  </dialog>
+
+  <dialog id="palette" aria-label="Command search">
+    <input id="palette-input" type="text" placeholder="Type a command…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="palette-list">
+    <div id="palette-list" class="palette-list" role="listbox"></div>
+    <div class="palette-gestures"></div>
+  </dialog>
+
   <script type="module" src="/src/editor/main.ts"></script>
 </body>
 </html>

@@ -1,12 +1,14 @@
 /**
- * Field types a component can declare. There are only four, so an inspector can draw each one without special cases.
+ * Field types a component can declare. Each one can be drawn by the inspector without special cases.
  * Each field has a default; stored scenes leave out values that equal their default.
+ * An `asset` field holds a path inside the project's assets folder, such as "images/crate.png".
  */
 export type FieldSpec =
   | { readonly type: 'number'; readonly default: number; readonly min?: number; readonly max?: number }
   | { readonly type: 'string'; readonly default: string }
   | { readonly type: 'boolean'; readonly default: boolean }
-  | { readonly type: 'enum'; readonly default: string; readonly options: readonly string[] };
+  | { readonly type: 'enum'; readonly default: string; readonly options: readonly string[] }
+  | { readonly type: 'asset'; readonly default: string; readonly kind: 'image' | 'audio' };
 
 export type FieldValue = number | string | boolean;
 
@@ -35,6 +37,8 @@ export function checkValue(spec: FieldSpec, value: unknown): string | null {
       return typeof value === 'boolean' ? null : 'must be true or false';
     case 'enum':
       return typeof value === 'string' && spec.options.includes(value) ? null : `must be one of ${spec.options.join(', ')}`;
+    case 'asset':
+      return typeof value === 'string' ? null : 'must be an asset path';
   }
 }
 
@@ -86,17 +90,19 @@ export const transformSchema: ComponentSchema = {
   }
 };
 
-/** What to draw. Renderer-neutral: a renderer decides how to show the texture, layer and tint. */
+/** What to draw: an image from the assets folder, sized in world units. Renderers decide the details. */
 export const spriteSchema: ComponentSchema = {
   name: 'sprite',
   fields: {
-    texture: { type: 'string', default: '' },
+    texture: { type: 'asset', kind: 'image', default: '' },
+    width: { type: 'number', default: 1, min: 0 },
+    height: { type: 'number', default: 1, min: 0 },
     layer: { type: 'number', default: 0 },
     tint: { type: 'string', default: '#ffffff' }
   }
 };
 
-/** A collision shape in the entity's local units. The physics adapter decides how to build it. */
+/** A collision shape in the entity's local units. */
 export const colliderSchema: ComponentSchema = {
   name: 'collider',
   fields: {
@@ -107,7 +113,29 @@ export const colliderSchema: ComponentSchema = {
   }
 };
 
-export const builtInComponents: readonly ComponentSchema[] = [transformSchema, spriteSchema, colliderSchema];
+/** Makes the entity's collider move under gravity. Without it, a collider is a fixed obstacle. */
+export const rigidbodySchema: ComponentSchema = {
+  name: 'rigidbody',
+  fields: {
+    type: { type: 'enum', default: 'dynamic', options: ['dynamic', 'static'] },
+    gravityScale: { type: 'number', default: 1, min: 0 },
+    density: { type: 'number', default: 1, min: 0 },
+    bounce: { type: 'number', default: 0, min: 0, max: 1 }
+  }
+};
+
+/** Plays a sound from the assets folder. The runtime starts it when play begins, if playOnStart is set. */
+export const audioSchema: ComponentSchema = {
+  name: 'audio',
+  fields: {
+    clip: { type: 'asset', kind: 'audio', default: '' },
+    volume: { type: 'number', default: 1, min: 0, max: 1 },
+    loop: { type: 'boolean', default: false },
+    playOnStart: { type: 'boolean', default: true }
+  }
+};
+
+export const builtInComponents: readonly ComponentSchema[] = [transformSchema, spriteSchema, colliderSchema, rigidbodySchema, audioSchema];
 
 export function createDefaultRegistry(): ComponentRegistry {
   return new ComponentRegistry(builtInComponents);

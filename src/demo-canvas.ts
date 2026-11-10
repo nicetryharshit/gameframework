@@ -9,7 +9,7 @@ void startDemo('CANVAS / 2D', async container => {
   const ctx = view.context;
   const clouds = [[70, 110], [340, 200], [240, 60]];
 
-  function drawWorld(game: { y: number; velocity: number; pipes: { x: number; center: number }[] }): void {
+  function drawWorld(game: { y: number; velocity: number; tuning: { radius: number }; pipes: { x: number; center: number }[] }): void {
     ctx.fillStyle = '#dceee9';
     ctx.fillRect(0, 0, flight.width, flight.height);
     ctx.fillStyle = '#f4faf4';
@@ -23,6 +23,7 @@ void startDemo('CANVAS / 2D', async container => {
     ctx.fillStyle = '#91b592'; ctx.fillRect(0, flight.floor, flight.width, 8);
     ctx.save();
     ctx.translate(flight.birdX, game.y);
+    ctx.scale(game.tuning.radius / flight.radius, game.tuning.radius / flight.radius);
     ctx.rotate(Math.max(-0.4, Math.min(0.8, game.velocity / 650)));
     ctx.fillStyle = '#efb650';
     ctx.beginPath(); ctx.ellipse(0, 0, 19, 15, 0, 0, Math.PI * 2); ctx.fill();
